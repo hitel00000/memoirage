@@ -1,7 +1,7 @@
 ﻿# Memoirage
 
 Memoirage is an offline-first PWA for capturing and organizing personal notes.
-The app now runs as a single-page application (SPA) with History API routing.
+The app runs as a single-page application (SPA) with History API routing.
 
 ## Architecture
 
@@ -12,16 +12,10 @@ The app now runs as a single-page application (SPA) with History API routing.
 
 ## Routes
 
-Primary SPA routes:
 - `/` -> Home
 - `/capture` -> Capture
 - `/processing` -> Processing
 - `/storage` -> Storage
-
-Compatibility redirects:
-- `capture.html` -> `/capture`
-- `processing.html` -> `/processing`
-- `graph.html` -> `/storage`
 
 Static-host fallback:
 - `404.html` redirects unknown paths to `index.html?route=...`
@@ -38,9 +32,6 @@ memoirage/
 |- app.js
 |- db.js
 |- index.html
-|- capture.html
-|- processing.html
-|- graph.html
 |- manifest.json
 |- sw.js
 |- favicon.svg
@@ -58,8 +49,6 @@ python -m http.server 8000
 
 2. Open:
 - `http://localhost:8000/`
-
-Legacy entry pages also redirect into SPA routes.
 
 ## Data Layer (`db.js`)
 
@@ -80,7 +69,7 @@ Public API:
 ## PWA / Offline
 
 - `manifest.json` uses relative URLs
-- `sw.js` precaches SPA assets and fallback pages
+- `sw.js` precaches SPA assets and fallback page
 - Service worker is registered by `app.js`
 
 ## GitHub Pages

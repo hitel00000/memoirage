@@ -8,16 +8,16 @@
 
 ## Current runtime model
 
-Memoirage now uses a single-page app shell:
+Memoirage uses a single-page app shell:
 - `index.html`: SPA entry
-- `app.js`: route handling + page logic
+- `app.js`: route handling + feature logic
 - `app.css`: shared SPA styles
 - `db.js`: storage abstraction
 
 Routing model:
 - History API routes: `/`, `/capture`, `/processing`, `/storage`
-- Legacy pages (`capture.html`, `processing.html`, `graph.html`) redirect to SPA paths
 - `404.html` provides static-host fallback and route recovery via `?route=`
+- Legacy HTML route files were removed and are no longer supported
 
 ## Repository layout
 
@@ -28,9 +28,6 @@ memoirage/
 |- app.js
 |- db.js
 |- index.html
-|- capture.html
-|- processing.html
-|- graph.html
 |- manifest.json
 |- sw.js
 |- favicon.svg
@@ -61,7 +58,7 @@ memoirage/
 ## PWA alignment
 
 - `manifest.json` is configured for SPA start (`./`)
-- `sw.js` precaches SPA files and compatibility files
+- `sw.js` precaches SPA files and fallback page
 - app registers service worker from `app.js`
 
 ## Current priorities
