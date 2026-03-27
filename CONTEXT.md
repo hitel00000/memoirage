@@ -2,16 +2,30 @@
 
 ## Product stance
 
-- Serverless at runtime: no dedicated API server required.
-- Offline-first by default: IndexedDB is primary storage.
-- Static hosting first: especially GitHub Pages project-path deployment.
+- Serverless runtime: static files only
+- Offline-first default: IndexedDB
+- Deploy target: static hosting, including GitHub Pages
 
-## Repository layout (GitHub Pages friendly)
+## Current runtime model
 
-All runtime files are in repository root:
+Memoirage now uses a single-page app shell:
+- `index.html`: SPA entry
+- `app.js`: route handling + page logic
+- `app.css`: shared SPA styles
+- `db.js`: storage abstraction
+
+Routing model:
+- History API routes: `/`, `/capture`, `/processing`, `/storage`
+- Legacy pages (`capture.html`, `processing.html`, `graph.html`) redirect to SPA paths
+- `404.html` provides static-host fallback and route recovery via `?route=`
+
+## Repository layout
 
 ```text
 memoirage/
+|- 404.html
+|- app.css
+|- app.js
 |- db.js
 |- index.html
 |- capture.html
@@ -19,54 +33,39 @@ memoirage/
 |- graph.html
 |- manifest.json
 |- sw.js
+|- favicon.svg
 |- icon-192.png
 `- icon-512.png
 ```
 
-Rationale:
-- GitHub Pages project URLs include a subpath (`/repo-name/`).
-- Root-absolute routes (`/index.html`, `/db.js`) break there.
-- Relative paths (`./...`) keep runtime portable across local static servers and Pages.
+## Feature flow
 
-## Runtime flow
+1. Home (`/`)
+- dashboard + quick navigation
+- workspace note counters
 
-1. Capture (`capture.html`)
-- Quick note input.
-- Save as `status: inbox`.
+2. Capture (`/capture`)
+- quick note creation
+- save into `status: inbox`
 
-2. Processing (`processing.html`)
-- Load inbox notes.
-- Update status (`processing`, `done`).
-- Soft delete notes.
+3. Processing (`/processing`)
+- review inbox notes
+- move to `processing` or `done`
+- soft delete notes
 
-3. Storage/Graph (`graph.html`)
-- Browse `done` notes.
-- Render note-link graph using inline SVG.
-- Create and delete links between notes.
-
-## Data layer (`db.js`)
-
-- Default config: `useFirestore = false`
-- IndexedDBStore:
-- object stores: `notes`, `links`
-- filtering by status/tag/query
-- soft delete handling
-- FirestoreStore:
-- optional mode only
-- enabled explicitly with `setConfig({ useFirestore: true })`
-- Public API:
-- `initDB`, `saveNote`, `getNotes`, `getNoteById`, `updateNote`, `deleteNote`
-- `saveLink`, `getLinks`, `deleteLink`, `clearDB`
-- `setConfig`, `getConfig`
+4. Storage (`/storage`)
+- list done notes
+- SVG graph rendering of note links
+- add/delete links and delete notes
 
 ## PWA alignment
 
-- `manifest.json` uses relative values (`start_url`, `scope`, icon paths).
-- `sw.js` precache list uses relative paths for Pages subpath support.
-- `index.html` registers service worker via `./sw.js`.
+- `manifest.json` is configured for SPA start (`./`)
+- `sw.js` precaches SPA files and compatibility files
+- app registers service worker from `app.js`
 
 ## Current priorities
 
-- Improve graph layout quality for larger note sets.
-- Add cache update UX (new version available prompt).
-- Keep optional Firestore mode documented without changing default serverless behavior.
+- Improve graph readability for larger datasets
+- Add app update notification UX for new cache versions
+- Keep Firestore mode optional and documented

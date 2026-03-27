@@ -1,21 +1,41 @@
 ﻿# Memoirage
 
-Memoirage is an offline-first PWA for quickly capturing and organizing personal notes.
-It runs as a static web app with IndexedDB as the default storage, so no runtime backend server is required.
+Memoirage is an offline-first PWA for capturing and organizing personal notes.
+The app now runs as a single-page application (SPA) with History API routing.
 
-## Current Product Direction
+## Architecture
 
-- Serverless runtime: static hosting friendly.
-- Offline-first default: IndexedDB store.
-- Optional Firestore mode is available, but disabled by default.
-- GitHub Pages compatibility is a first-class target.
+- Runtime: static hosting friendly (no dedicated API server)
+- Storage: IndexedDB by default (`db.js`)
+- Optional storage extension: Firestore mode in `db.js`
+- Frontend: SPA shell (`index.html`) + route logic (`app.js`) + styles (`app.css`)
+
+## Routes
+
+Primary SPA routes:
+- `/` -> Home
+- `/capture` -> Capture
+- `/processing` -> Processing
+- `/storage` -> Storage
+
+Compatibility redirects:
+- `capture.html` -> `/capture`
+- `processing.html` -> `/processing`
+- `graph.html` -> `/storage`
+
+Static-host fallback:
+- `404.html` redirects unknown paths to `index.html?route=...`
+- `app.js` restores the route from query and renders the correct screen
 
 ## Repository Layout
 
 ```text
 memoirage/
+|- 404.html
 |- CONTEXT.md
 |- README.md
+|- app.css
+|- app.js
 |- db.js
 |- index.html
 |- capture.html
@@ -23,62 +43,56 @@ memoirage/
 |- graph.html
 |- manifest.json
 |- sw.js
+|- favicon.svg
 |- icon-192.png
 `- icon-512.png
 ```
 
-All app routes and assets use relative paths (`./...`) so the app works from both local static servers and GitHub Pages project paths.
-
 ## Local Run
 
-1. Start a static server at repo root:
+1. Start a static server:
 
 ```bash
 python -m http.server 8000
 ```
 
-2. Open pages:
-- `http://localhost:8000/index.html`
-- `http://localhost:8000/capture.html`
-- `http://localhost:8000/processing.html`
-- `http://localhost:8000/graph.html`
+2. Open:
+- `http://localhost:8000/`
 
-Notes:
-- Use `http://` or `https://`, not `file://`.
-- Service Worker and installability are limited on `file://`.
+Legacy entry pages also redirect into SPA routes.
 
 ## Data Layer (`db.js`)
 
 Default: `IndexedDBStore`
 - object stores: `notes`, `links`
-- status/tag/query filtering
-- soft delete
+- filters by status/tag/query
+- soft delete support
 
 Optional: `FirestoreStore`
 - enable with `setConfig({ useFirestore: true })`
-- requires Firebase SDK loaded by the host page
+- requires Firebase SDK from host
 
 Public API:
 - `initDB`, `saveNote`, `getNotes`, `getNoteById`, `updateNote`, `deleteNote`
 - `saveLink`, `getLinks`, `deleteLink`, `clearDB`
 - `setConfig`, `getConfig`
 
-## PWA and Offline
+## PWA / Offline
 
-- `manifest.json` and `sw.js` are configured with relative paths.
-- Home page registers Service Worker from `./sw.js`.
-- Storage graph page now renders with inline SVG (no external CDN dependency).
+- `manifest.json` uses relative URLs
+- `sw.js` precaches SPA assets and fallback pages
+- Service worker is registered by `app.js`
 
-## Deploy to GitHub Pages
+## GitHub Pages
 
-1. Push repository to GitHub.
-2. Go to `Settings -> Pages`.
-3. Set source to `Deploy from a branch` and choose `main` / `root`.
+1. Push repository
+2. `Settings -> Pages`
+3. Source: `main` / root
 4. Open published URL:
 - `https://<username>.github.io/<repo-name>/`
 
 ## Next Improvements
 
-- Better graph layout and edge filtering controls.
-- Firestore setup guide with auth examples.
-- Cache update UX (new version available prompt).
+- Improve graph layout quality for larger note sets
+- Add cache update prompt UX
+- Expand Firestore setup guide and auth examples
