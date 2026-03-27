@@ -5,41 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memoirage - Processing Layer</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./shared.css">
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
             height: 100vh;
             overflow: hidden;
         }
-        nav {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        }
-        nav ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        nav li { margin: 0; }
-        nav a {
-            color: white;
-            text-decoration: none;
-            padding: 15px 20px;
-            display: block;
-            transition: background 0.3s;
-        }
-        nav a:hover { background: rgba(255,255,255,0.1); }
-        nav a.active { background: rgba(255,255,255,0.25); border-bottom: 2px solid white; }
 
         .container {
             display: flex;
-            height: calc(100vh - 50px);
+            height: calc(100vh - 48px);
         }
         .list-panel {
             width: 40%;
@@ -125,16 +100,10 @@
     </style>
 
     <script src="./db.js"></script>
+    <script src="./shared.js" defer></script>
 </head>
-<body>
-    <nav>
-        <ul>
-            <li><a href="./index.html">Home</a></li>
-            <li><a href="./capture.html">Capture</a></li>
-            <li><a href="./processing.html" class="active">Processing</a></li>
-            <li><a href="./graph.html">Storage</a></li>
-        </ul>
-    </nav>
+<body data-page="processing">
+    <div id="shared-nav"></div>
     <div class="container">
         <div class="list-panel" id="listPanel"></div>
         <div class="detail-panel" id="detailPanel"><p>Select a note...</p></div>
