@@ -93,6 +93,70 @@ function renderPlaceholder(title) {
   `;
 }
 
+function generateId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.random() * 16 | 0;
+    const value = char === 'x' ? random : (random & 0x3 | 0x8);
+    return value.toString(16);
+  });
+}
+
+function renderCapture() {
+  const root = document.getElementById('app-root');
+  root.innerHTML = `
+    <section class="capture-card">
+      <h2>Quick Capture</h2>
+      <textarea id="captureContent" placeholder="Write anything..."></textarea>
+      <button id="captureSubmit">Save</button>
+      <div id="captureStatus" class="capture-status"></div>
+    </section>
+  `;
+
+  const submitButton = document.getElementById('captureSubmit');
+  submitButton.addEventListener('click', async () => {
+    const textarea = document.getElementById('captureContent');
+    const statusEl = document.getElementById('captureStatus');
+    const content = textarea.value.trim();
+
+    if (!content) {
+      showCaptureStatus(statusEl, 'Please enter content', 'error');
+      return;
+    }
+
+    submitButton.disabled = true;
+    submitButton.textContent = 'Saving...';
+
+    try {
+      await saveNote({
+        id: generateId(),
+        type: 'text',
+        content,
+        status: 'inbox',
+        tags: [],
+        created_at: new Date().toISOString(),
+        deleted_at: null
+      });
+
+      textarea.value = '';
+      showCaptureStatus(statusEl, 'Saved!', 'success');
+    } catch (error) {
+      console.error('Save failed:', error);
+      showCaptureStatus(statusEl, 'Save failed: ' + error.message, 'error');
+    } finally {
+      submitButton.disabled = false;
+      submitButton.textContent = 'Save';
+    }
+  });
+}
+
+function showCaptureStatus(element, message, type) {
+  element.textContent = message;
+  element.className = 'capture-status show ' + type;
+  setTimeout(() => {
+    element.className = 'capture-status';
+  }, 2500);
+}
+
 async function loadHomeStats() {
   const inboxEl = document.getElementById('inboxCount');
   const doneEl = document.getElementById('doneCount');
@@ -135,7 +199,7 @@ async function renderRoute() {
   }
 
   if (route === 'capture') {
-    renderPlaceholder('Capture');
+    renderCapture();
     return;
   }
 
