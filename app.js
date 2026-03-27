@@ -7,6 +7,10 @@
 
 let deferredPrompt = null;
 let statsIntervalId = null;
+const processingState = {
+  notes: [],
+  selectedIndex: -1
+};
 
 function getRouteKey() {
   const hash = window.location.hash.replace('#', '').trim();
@@ -101,6 +105,15 @@ function generateId() {
   });
 }
 
+function escapeHtml(input) {
+  return String(input || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderCapture() {
   const root = document.getElementById('app-root');
   root.innerHTML = `
@@ -157,6 +170,135 @@ function showCaptureStatus(element, message, type) {
   }, 2500);
 }
 
+async function loadProcessingNotes() {
+  processingState.notes = await getNotes({ status: 'inbox', include_deleted: false });
+}
+
+function renderProcessing() {
+  const root = document.getElementById('app-root');
+  root.innerHTML = `
+    <div class="processing-wrap">
+      <section id="processingList" class="processing-list"></section>
+      <section id="processingDetail" class="processing-detail"><p>Select a note...</p></section>
+    </div>
+  `;
+
+  renderProcessingList();
+  renderProcessingDetail();
+}
+
+function renderProcessingList() {
+  const panel = document.getElementById('processingList');
+  if (!panel) return;
+
+  if (processingState.notes.length === 0) {
+    panel.innerHTML = '<div style="padding: 20px; color: #999;">No notes</div>';
+    return;
+  }
+
+  panel.innerHTML = processingState.notes.map((note, idx) => {
+    const selectedClass = idx === processingState.selectedIndex ? ' selected' : '';
+    return `
+      <div class="processing-item${selectedClass}">
+        <div class="processing-item-content" data-action="select" data-idx="${idx}">
+          <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
+          <div class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
+        </div>
+        <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">Delete</button>
+      </div>
+    `;
+  }).join('');
+
+  panel.querySelectorAll('[data-action=\"select\"]').forEach((el) => {
+    el.addEventListener('click', () => {
+      processingState.selectedIndex = Number(el.dataset.idx);
+      renderProcessingList();
+      renderProcessingDetail();
+    });
+  });
+
+  panel.querySelectorAll('[data-action=\"delete\"]').forEach((el) => {
+    el.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await deleteProcessingNote(el.dataset.id);
+    });
+  });
+}
+
+function renderProcessingDetail() {
+  const panel = document.getElementById('processingDetail');
+  if (!panel) return;
+
+  const selected = processingState.notes[processingState.selectedIndex];
+  if (!selected) {
+    panel.innerHTML = '<p>Select a note...</p>';
+    return;
+  }
+
+  panel.innerHTML = `
+    <div id="processingStatus" class="processing-status"></div>
+    <h2 style="margin-top: 0;">Note</h2>
+    <p><small>Created: ${escapeHtml(new Date(selected.created_at).toLocaleString())}</small></p>
+    <div class="processing-note-box">${escapeHtml(selected.content || '(No content)')}</div>
+
+    <div class="processing-btn-row">
+      <button class="processing-btn primary" id="moveProcessingBtn">Move to Processing</button>
+      <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
+    </div>
+
+    <button class="processing-btn danger" id="deleteNoteBtn">Delete Note</button>
+  `;
+
+  document.getElementById('moveProcessingBtn').addEventListener('click', async () => {
+    await updateProcessingStatus('processing');
+  });
+
+  document.getElementById('moveDoneBtn').addEventListener('click', async () => {
+    await updateProcessingStatus('done');
+  });
+
+  document.getElementById('deleteNoteBtn').addEventListener('click', async () => {
+    await deleteProcessingNote(selected.id);
+  });
+}
+
+async function updateProcessingStatus(status) {
+  const selected = processingState.notes[processingState.selectedIndex];
+  if (!selected) return;
+
+  try {
+    await updateNote(selected.id, { status });
+    await loadProcessingNotes();
+    processingState.selectedIndex = -1;
+    renderProcessingList();
+    renderProcessingDetail();
+  } catch (error) {
+    showProcessingStatus('Update failed: ' + error.message, 'error');
+  }
+}
+
+async function deleteProcessingNote(noteId) {
+  if (!confirm('Delete this note?')) return;
+
+  try {
+    await deleteNote(noteId);
+    await loadProcessingNotes();
+    processingState.selectedIndex = -1;
+    renderProcessingList();
+    renderProcessingDetail();
+  } catch (error) {
+    showProcessingStatus('Delete failed: ' + error.message, 'error');
+  }
+}
+
+function showProcessingStatus(message, type) {
+  const statusEl = document.getElementById('processingStatus');
+  if (!statusEl) return;
+
+  statusEl.textContent = message;
+  statusEl.className = 'processing-status show ' + type;
+}
+
 async function loadHomeStats() {
   const inboxEl = document.getElementById('inboxCount');
   const doneEl = document.getElementById('doneCount');
@@ -204,7 +346,8 @@ async function renderRoute() {
   }
 
   if (route === 'processing') {
-    renderPlaceholder('Processing');
+    await loadProcessingNotes();
+    renderProcessing();
     return;
   }
 

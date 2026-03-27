@@ -226,3 +226,136 @@ h1 {
     background: #f8d7da;
     color: #721c24;
 }
+
+.processing-wrap {
+    display: flex;
+    height: calc(100vh - 48px);
+}
+
+.processing-list {
+    width: 40%;
+    border-right: 1px solid #ddd;
+    overflow-y: auto;
+    background: #f9f9f9;
+    color: #111827;
+}
+
+.processing-detail {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #fff;
+    color: #111827;
+}
+
+.processing-item {
+    padding: 12px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    background: #fff;
+    display: flex;
+    gap: 10px;
+}
+
+.processing-item:hover {
+    background: #f0f0f0;
+}
+
+.processing-item.selected {
+    background: #2e7dff;
+    color: #fff;
+}
+
+.processing-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.processing-item-text {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.processing-item-date {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.processing-delete-mini {
+    background: #ff6b6b;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.processing-delete-mini:hover {
+    opacity: 0.9;
+}
+
+.processing-btn-row {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.processing-btn {
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 8px 12px;
+}
+
+.processing-btn.primary {
+    background: #2e7dff;
+    color: #fff;
+}
+
+.processing-btn.primary:hover {
+    background: #1e69e6;
+}
+
+.processing-btn.danger {
+    background: #dc3545;
+    color: #fff;
+    width: 100%;
+}
+
+.processing-btn.danger:hover {
+    background: #c82333;
+}
+
+.processing-note-box {
+    border: 1px solid #ddd;
+    padding: 12px;
+    border-radius: 6px;
+    min-height: 100px;
+    background: #f9f9f9;
+    white-space: pre-wrap;
+}
+
+.processing-status {
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    display: none;
+}
+
+.processing-status.show {
+    display: block;
+}
+
+.processing-status.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.processing-status.error {
+    background: #f8d7da;
+    color: #721c24;
+}
