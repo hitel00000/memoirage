@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PKM - Personal Knowledge Manager</title>
+    <meta name="description" content="개인 지식 관리 시스템">
+    <meta name="theme-color" content="#007bff">
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.json">
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="PKM">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        nav {
+            background: rgba(0, 0, 0, 0.15);
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        nav li {
+            margin: 0;
+        }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 15px 20px;
+            display: block;
+            transition: background 0.3s ease;
+            font-size: 14px;
+        }
+        nav a:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        nav a.active {
+            background: rgba(255,255,255,0.25);
+            border-bottom: 2px solid white;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            text-align: center;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        .menu {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .menu-item {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 30px 20px;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s ease;
+            display: block;
+        }
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .menu-item h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.4em;
+        }
+        .menu-item p {
+            margin: 0;
+            opacity: 0.8;
+            font-size: 0.9em;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .status h4 {
+            margin: 0 0 10px 0;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat .number {
+            font-size: 2em;
+            font-weight: bold;
+        }
+        .stat .label {
+            font-size: 0.8em;
+            opacity: 0.8;
+        }
+        .install-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            display: none;
+        }
+        .install-btn:hover {
+            background: #218838;
+        }
+    </style>
+
+    <!-- Storage abstraction layer (IndexedDB by default, Firestore optional) -->
+    <script src="./db.js"></script>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="./index.html" class="active">🏠 홈</a></li>
+            <li><a href="./capture.html">📝 캡처</a></li>
+            <li><a href="./processing.html">⚙️ 처리</a></li>
+            <li><a href="./graph.html">🕸️ 저장</a></li>
+        </ul>
+    </nav>
+    <div class="container">
+        <h1>🧠 PKM</h1>
+        <p class="subtitle">Personal Knowledge Manager</p>
+
+        <div class="menu">
+            <a href="./capture.html" class="menu-item">
+                <h3>📝 캡처</h3>
+                <p>생각나는 대로 빠르게 기록하세요</p>
+            </a>
+            <a href="./processing.html" class="menu-item">
+                <h3>⚙️ 처리</h3>
+                <p>inbox를 정리하고 AI 정제</p>
+            </a>
+            <a href="./graph.html" class="menu-item">
+                <h3>🕸️ 저장</h3>
+                <p>지식 그래프 탐색</p>
+            </a>
+        </div>
+
+        <div class="status">
+            <h4>📊 시스템 상태</h4>
+            <div id="stats" class="stats">
+                <div class="stat">
+                    <div class="number" id="inboxCount">-</div>
+                    <div class="label">Inbox</div>
+                </div>
+                <div class="stat">
+                    <div class="number" id="doneCount">-</div>
+                    <div class="label">완료</div>
+                </div>
+                <div class="stat">
+                    <div class="number" id="totalCount">-</div>
+                    <div class="label">전체</div>
+                </div>
+            </div>
+        </div>
+
+        <button id="installBtn" class="install-btn">📱 앱 설치</button>
+    </div>
+
+    <script>
+        let deferredPrompt;
+
+        // PWA 설치 프롬프트
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installBtn').style.display = 'block';
+        });
+
+        document.getElementById('installBtn').addEventListener('click', () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        });
+
+        // 통계 로드 (serverless: read directly from db.js abstraction)
+        async function loadStats() {
+            try {
+                const [inbox, done, total] = await Promise.all([
+                    getNotes({ status: 'inbox', include_deleted: false }),
+                    getNotes({ status: 'done', include_deleted: false }),
+                    getNotes({ include_deleted: false })
+                ]);
+
+                document.getElementById('inboxCount').textContent = inbox.length;
+                document.getElementById('doneCount').textContent = done.length;
+                document.getElementById('totalCount').textContent = total.length;
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        async function initHome() {
+            try {
+                await initDB();
+                await loadStats();
+                setInterval(loadStats, 5000); // 5초마다 갱신
+            } catch (error) {
+                console.error('Failed to initialize home:', error);
+            }
+        }
+
+        // 초기 로드
+        initHome();
+
+        // Service Worker 등록
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>

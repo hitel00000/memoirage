@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PKM - Processing Layer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        nav li { margin: 0; }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 15px 20px;
+            display: block;
+            transition: background 0.3s;
+        }
+        nav a:hover { background: rgba(255,255,255,0.1); }
+        nav a.active { background: rgba(255,255,255,0.25); border-bottom: 2px solid white; }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+        .list-panel {
+            width: 40%;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            background: #f9f9f9;
+        }
+        .detail-panel {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .note-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            background: white;
+            display: flex;
+            gap: 10px;
+        }
+        .note-item:hover { background: #f0f0f0; }
+        .note-item.selected { background: #007bff; color: white; }
+
+        .note-item-content { flex: 1; min-width: 0; }
+        .note-item .content {
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .note-item .date {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .delete-btn {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            opacity: 0.7;
+            font-size: 12px;
+        }
+        .delete-btn:hover { opacity: 1; }
+
+        .status {
+            padding: 8px 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.show { display: block; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            width: 100%;
+        }
+        .btn-danger:hover { background: #c82333; }
+    </style>
+
+    <script src="./db.js"></script>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="./index.html">🏠 Home</a></li>
+            <li><a href="./capture.html">📝 Capture</a></li>
+            <li><a href="./processing.html" class="active">⚙️ Processing</a></li>
+            <li><a href="./graph.html">🕸️ Storage</a></li>
+        </ul>
+    </nav>
+    <div class="container">
+        <div class="list-panel" id="listPanel"></div>
+        <div class="detail-panel" id="detailPanel"><p>Select a note...</p></div>
+    </div>
+
+    <script>
+        let notes = [];
+        let selectedIndex = -1;
+
+        async function init() {
+            try {
+                await initDB();
+                console.log('Database initialized');
+                await loadNotes();
+            } catch (err) {
+                console.error('Init failed:', err);
+                showStatus('Failed to initialize: ' + err.message, 'error');
+            }
+        }
+
+        async function loadNotes() {
+            try {
+                notes = await getNotes({ status: 'inbox', include_deleted: false });
+                renderList();
+            } catch (err) {
+                console.error('Load failed:', err);
+                showStatus('Failed to load notes', 'error');
+            }
+        }
+
+        function renderList() {
+            const panel = document.getElementById('listPanel');
+            panel.innerHTML = '';
+
+            if (notes.length === 0) {
+                panel.innerHTML = '<div style="padding: 20px; color: #999;">No notes</div>';
+                return;
+            }
+
+            notes.forEach((note, idx) => {
+                const item = document.createElement('div');
+                item.className = 'note-item' + (idx === selectedIndex ? ' selected' : '');
+                
+                const created = new Date(note.created_at).toLocaleString();
+                item.innerHTML = `
+                    <div class="note-item-content" onclick="selectNote(${idx})">
+                        <div class="content">${note.content || '(No content)'}</div>
+                        <div class="date">${created}</div>
+                    </div>
+                    <button class="delete-btn" onclick="deleteNoteHandler('${note.id}', event)">🗑</button>
+                `;
+                panel.appendChild(item);
+            });
+        }
+
+        function selectNote(idx) {
+            selectedIndex = idx;
+            renderList();
+            renderDetail();
+        }
+
+        async function renderDetail() {
+            const panel = document.getElementById('detailPanel');
+            if (selectedIndex < 0 || selectedIndex >= notes.length) {
+                panel.innerHTML = '<p>Select a note...</p>';
+                return;
+            }
+
+            const note = notes[selectedIndex];
+            const created = new Date(note.created_at).toLocaleString();
+
+            panel.innerHTML = `
+                <h2 style="margin-top: 0;">Note</h2>
+                <p><small>Created: ${created}</small></p>
+                <div style="border: 1px solid #ddd; padding: 12px; border-radius: 4px; min-height: 100px; background: #f9f9f9;">
+                    ${note.content || '(No content)'}
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="setStatus('processing')">→ Processing</button>
+                    <button class="btn-primary" onclick="setStatus('done')">✓ Done</button>
+                </div>
+
+                <button class="btn-danger" onclick="deleteNoteHandler('${note.id}', event)">Delete Note</button>
+            `;
+        }
+
+        async function setStatus(newStatus) {
+            const note = notes[selectedIndex];
+            try {
+                await updateNote(note.id, { status: newStatus });
+                await loadNotes();
+                showStatus(`Moved to ${newStatus}`, 'success');
+            } catch (err) {
+                console.error('Update failed:', err);
+                showStatus('Update failed', 'error');
+            }
+        }
+
+        async function deleteNoteHandler(noteId, event) {
+            if (event) event.stopPropagation();
+            if (!confirm('Delete this note?')) return;
+
+            try {
+                await deleteNote(noteId);
+                notes = notes.filter(n => n.id !== noteId);
+                selectedIndex = -1;
+                renderList();
+                document.getElementById('detailPanel').innerHTML = '<p>Select a note...</p>';
+                showStatus('Note deleted', 'success');
+            } catch (err) {
+                console.error('Delete failed:', err);
+                showStatus('Delete failed', 'error');
+            }
+        }
+
+        function showStatus(msg, type) {
+            const div = document.createElement('div');
+            div.className = 'status show ' + type;
+            div.textContent = msg;
+            document.getElementById('detailPanel').insertBefore(div, document.getElementById('detailPanel').firstChild);
+            setTimeout(() => div.remove(), 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

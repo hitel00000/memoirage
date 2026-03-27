@@ -1,0 +1,23 @@
+# 의존성
+node_modules/
+
+# 환경변수
+.env
+
+# DB 파일
+db/*.db
+db/*.db-shm
+db/*.db-wal
+
+# 로그
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 에디터
+.vscode/
+.idea/
+*.swp

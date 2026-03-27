@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PKM - Capture</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        nav li { margin: 0; }
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 15px 20px;
+            display: block;
+            transition: background 0.3s ease;
+            font-size: 14px;
+        }
+        nav a:hover { background: rgba(255,255,255,0.1); }
+        nav a.active { background: rgba(255,255,255,0.25); border-bottom: 2px solid white; }
+
+        .container {
+            max-width: 400px;
+            margin: 20px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { margin-top: 0; }
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+
+        .status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            display: none;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+
+    <script src="./db.js"></script>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><a href="./index.html">🏠 Home</a></li>
+            <li><a href="./capture.html" class="active">📝 Capture</a></li>
+            <li><a href="./processing.html">⚙️ Processing</a></li>
+            <li><a href="./graph.html">🕸️ Storage</a></li>
+        </ul>
+    </nav>
+    <div class="container">
+        <h1>Quick Capture</h1>
+        <textarea id="content" placeholder="Write anything..."></textarea>
+        <button id="submitBtn" onclick="submitNote()">Save</button>
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        function generateId() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        async function init() {
+            try {
+                await initDB();
+                console.log('Database initialized');
+            } catch (err) {
+                console.error('Failed to initialize database:', err);
+                showStatus('Database initialization failed', 'error');
+            }
+        }
+
+        async function submitNote() {
+            const content = document.getElementById('content').value.trim();
+            const submitBtn = document.getElementById('submitBtn');
+
+            if (!content) {
+                showStatus('Please enter content', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving...';
+
+            try {
+                await saveNote({
+                    id: generateId(),
+                    type: 'text',
+                    content: content,
+                    status: 'inbox',
+                    tags: [],
+                    created_at: new Date().toISOString(),
+                    deleted_at: null
+                });
+
+                document.getElementById('content').value = '';
+                showStatus('Saved!', 'success');
+            } catch (error) {
+                console.error('Save failed:', error);
+                showStatus('Save failed: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save';
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
