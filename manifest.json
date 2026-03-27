@@ -1,8 +1,8 @@
-{
+﻿{
   "name": "Memoirage",
   "short_name": "Memoirage",
-  "description": "개인 지식 관리 시스템",
-  "start_url": "./index.html",
+  "description": "Offline-first personal knowledge capture app",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#667eea",
   "theme_color": "#007bff",
