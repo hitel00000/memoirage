@@ -24,7 +24,10 @@ Static-host fallback:
 
 Processing behavior:
 - shows both `inbox` and `processing` notes
+- explains role difference: `inbox` (unreviewed) vs `processing` (active refinement)
 - allows toggling between `inbox` <-> `processing`
+- supports editing note content directly in processing detail
+- supports preparing links before notes are done
 - allows moving notes to `done`
 
 Storage link behavior:

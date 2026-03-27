@@ -50,7 +50,10 @@ memoirage/
 
 3. Processing (`/processing`)
 - review both `inbox` and `processing` notes
+- clear in-UI explanation of `inbox` vs `processing`
 - toggle note status between `inbox` and `processing`
+- edit note content directly
+- prepare/delete links before done state
 - move to `done`
 - soft delete notes
 

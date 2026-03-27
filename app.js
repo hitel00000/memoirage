@@ -9,7 +9,9 @@ let deferredPrompt = null;
 let statsIntervalId = null;
 const processingState = {
   notes: [],
-  selectedIndex: -1
+  selectedIndex: -1,
+  allNotes: [],
+  links: []
 };
 const storageState = {
   notes: [],
@@ -228,14 +230,62 @@ function showCaptureStatus(element, message, type) {
 }
 
 async function loadProcessingNotes() {
-  const [inboxNotes, processingNotes] = await Promise.all([
+  const [inboxNotes, processingNotes, allNotes, allLinks] = await Promise.all([
     getNotes({ status: 'inbox', include_deleted: false }),
-    getNotes({ status: 'processing', include_deleted: false })
+    getNotes({ status: 'processing', include_deleted: false }),
+    getNotes({ include_deleted: false }),
+    getLinks({})
   ]);
 
   processingState.notes = [...processingNotes, ...inboxNotes].sort(
     (a, b) => new Date(b.created_at) - new Date(a.created_at)
   );
+  processingState.allNotes = allNotes;
+  processingState.links = allLinks;
+}
+
+async function reloadProcessingAndSelect(noteId = null) {
+  await loadProcessingNotes();
+
+  if (noteId) {
+    processingState.selectedIndex = processingState.notes.findIndex((note) => note.id === noteId);
+  } else if (processingState.selectedIndex >= processingState.notes.length) {
+    processingState.selectedIndex = -1;
+  }
+
+  renderProcessingList();
+  renderProcessingDetail();
+}
+
+function getProcessingNoteById(noteId) {
+  return processingState.allNotes.find((note) => note.id === noteId) || null;
+}
+
+function getProcessingRelatedLinks(noteId) {
+  return processingState.links.filter((link) => link.source_id === noteId || link.target_id === noteId);
+}
+
+function getProcessingTargetCandidates(noteId) {
+  return processingState.allNotes
+    .filter((note) => note.id !== noteId)
+    .map((note) => ({
+      id: note.id,
+      content: note.content || '(No content)',
+      display: trimText(note.content || '(No content)', 64)
+    }));
+}
+
+function findProcessingTargetByQuery(noteId, query) {
+  const normalized = (query || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  const candidates = getProcessingTargetCandidates(noteId);
+  const exact = candidates.find((item) => item.id === query || item.display.toLowerCase() === normalized);
+  if (exact) return exact;
+
+  const includes = candidates.filter((item) => item.content.toLowerCase().includes(normalized));
+  if (includes.length === 1) return includes[0];
+  return null;
 }
 
 function renderProcessing() {
@@ -243,7 +293,13 @@ function renderProcessing() {
   root.innerHTML = `
     <div class="processing-wrap">
       <section id="processingList" class="processing-list"></section>
-      <section id="processingDetail" class="processing-detail"><p>Select a note...</p></section>
+      <section id="processingDetail" class="processing-detail">
+        <div class="processing-legend">
+          <p><strong>Inbox</strong>: quick captures waiting for first review.</p>
+          <p><strong>Processing</strong>: notes you're actively refining, linking, and preparing for Done.</p>
+        </div>
+        <p>Select a note...</p>
+      </section>
     </div>
   `;
 
@@ -679,7 +735,13 @@ function renderProcessingDetail() {
 
   const selected = processingState.notes[processingState.selectedIndex];
   if (!selected) {
-    panel.innerHTML = '<p>Select a note...</p>';
+    panel.innerHTML = `
+      <div class="processing-legend">
+        <p><strong>Inbox</strong>: quick captures waiting for first review.</p>
+        <p><strong>Processing</strong>: notes you're actively refining, linking, and preparing for Done.</p>
+      </div>
+      <p>Select a note...</p>
+    `;
     return;
   }
 
@@ -689,13 +751,22 @@ function renderProcessingDetail() {
   const toggleHelp = currentStatus === 'processing'
     ? 'Send this note back for later review.'
     : 'Move this note into the active processing queue.';
+  const relatedLinks = getProcessingRelatedLinks(selected.id);
+  const targetOptions = getProcessingTargetCandidates(selected.id)
+    .map((item) => `<option value="${escapeHtml(item.display)}"></option>`)
+    .join('');
+  const relationOptions = linkTypeOptions
+    .map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)
+    .join('');
 
   panel.innerHTML = `
     <div id="processingStatus" class="processing-status"></div>
     <h2 style="margin-top: 0;">Note</h2>
     <p><small>Created: ${escapeHtml(new Date(selected.created_at).toLocaleString())}</small></p>
     <p><small>Current status: <strong>${escapeHtml(getNoteStatusLabel(currentStatus))}</strong></small></p>
-    <div class="processing-note-box">${escapeHtml(selected.content || '(No content)')}</div>
+    <label for="processingContent"><small>Content</small></label>
+    <textarea id="processingContent" class="processing-content-input">${escapeHtml(selected.content || '')}</textarea>
+    <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
 
     <div class="processing-btn-row">
       <button class="processing-btn primary" id="toggleProcessingBtn">${toggleLabel}</button>
@@ -703,8 +774,26 @@ function renderProcessingDetail() {
     </div>
     <p class="processing-help-text">${escapeHtml(toggleHelp)}</p>
 
+    <h3 class="storage-section-title">Prepare Link</h3>
+    <div class="storage-link-form">
+      <input id="processingTargetSearch" list="processingTargetOptions" class="storage-input" placeholder="Search note text or paste note id">
+      <datalist id="processingTargetOptions">${targetOptions}</datalist>
+      <select id="processingType" class="storage-select">${relationOptions}</select>
+      <button id="processingAddLinkBtn" class="storage-btn primary">Add Prep Link</button>
+    </div>
+    <p class="storage-link-help">Links created here are stored now and show in Storage graph once both notes are Done.</p>
+
+    <h3 class="storage-section-title">Prepared Links (${relatedLinks.length})</h3>
+    <div id="processingLinks"></div>
+
     <button class="processing-btn danger" id="deleteNoteBtn">Delete Note</button>
   `;
+
+  renderProcessingLinks(relatedLinks, selected.id);
+
+  document.getElementById('saveProcessingNoteBtn').addEventListener('click', async () => {
+    await saveProcessingContent(selected.id);
+  });
 
   document.getElementById('toggleProcessingBtn').addEventListener('click', async () => {
     await updateProcessingStatus(toggleTarget);
@@ -717,6 +806,112 @@ function renderProcessingDetail() {
   document.getElementById('deleteNoteBtn').addEventListener('click', async () => {
     await deleteProcessingNote(selected.id);
   });
+
+  document.getElementById('processingAddLinkBtn').addEventListener('click', async () => {
+    await addProcessingLink(selected.id);
+  });
+}
+
+function renderProcessingLinks(relatedLinks, noteId) {
+  const container = document.getElementById('processingLinks');
+  if (!container) return;
+
+  if (relatedLinks.length === 0) {
+    container.innerHTML = '<div class="storage-empty" style="padding: 10px 0;">No prepared links yet.</div>';
+    return;
+  }
+
+  container.innerHTML = relatedLinks.map((link) => {
+    const outgoing = link.source_id === noteId;
+    const otherId = outgoing ? link.target_id : link.source_id;
+    const otherNote = getProcessingNoteById(otherId);
+    const direction = outgoing ? '->' : '<-';
+    return `
+      <div class="storage-link-row">
+        <div class="storage-link-head">
+          <span class="storage-link-type">${escapeHtml(link.type || 'related')}</span>
+          <button class="storage-link-remove" data-link-id="${link.id}">Delete</button>
+        </div>
+        <div>${direction} ${escapeHtml(trimText(otherNote ? otherNote.content : '(Deleted note)', 48))}</div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.storage-link-remove').forEach((button) => {
+    button.addEventListener('click', async () => {
+      await deleteProcessingLink(button.dataset.linkId, noteId);
+    });
+  });
+}
+
+async function saveProcessingContent(noteId) {
+  const contentInput = document.getElementById('processingContent');
+  if (!contentInput) return;
+
+  const content = contentInput.value.trim();
+  if (!content) {
+    showProcessingStatus('Content cannot be empty.', 'error');
+    return;
+  }
+
+  try {
+    await updateNote(noteId, { content });
+    await reloadProcessingAndSelect(noteId);
+    showProcessingStatus('Content updated.', 'success');
+  } catch (error) {
+    showProcessingStatus('Save failed: ' + error.message, 'error');
+  }
+}
+
+async function addProcessingLink(noteId) {
+  const targetInput = document.getElementById('processingTargetSearch');
+  const relationSelect = document.getElementById('processingType');
+  if (!targetInput || !relationSelect) return;
+
+  const targetQuery = targetInput.value.trim();
+  const targetMatch = findProcessingTargetByQuery(noteId, targetQuery);
+  if (!targetMatch) {
+    showProcessingStatus('Target note not found. Try a more specific keyword.', 'error');
+    return;
+  }
+
+  const linkType = relationSelect.value.trim() || 'related';
+  const duplicated = processingState.links.find((link) =>
+    link.source_id === noteId &&
+    link.target_id === targetMatch.id &&
+    (link.type || 'related') === linkType
+  );
+
+  if (duplicated) {
+    showProcessingStatus('The same link already exists.', 'error');
+    return;
+  }
+
+  try {
+    await saveLink({
+      id: generateId(),
+      source_id: noteId,
+      target_id: targetMatch.id,
+      type: linkType,
+      weight: 1,
+      created_at: new Date().toISOString()
+    });
+    await reloadProcessingAndSelect(noteId);
+    showProcessingStatus('Prepared link added.', 'success');
+  } catch (error) {
+    showProcessingStatus('Link add failed: ' + error.message, 'error');
+  }
+}
+
+async function deleteProcessingLink(linkId, noteId) {
+  if (!confirm('Delete this prepared link?')) return;
+  try {
+    await deleteLink(linkId);
+    await reloadProcessingAndSelect(noteId);
+    showProcessingStatus('Prepared link deleted.', 'success');
+  } catch (error) {
+    showProcessingStatus('Link delete failed: ' + error.message, 'error');
+  }
 }
 
 async function updateProcessingStatus(status) {
@@ -725,10 +920,10 @@ async function updateProcessingStatus(status) {
 
   try {
     await updateNote(selected.id, { status });
-    await loadProcessingNotes();
-    processingState.selectedIndex = -1;
-    renderProcessingList();
-    renderProcessingDetail();
+    await reloadProcessingAndSelect(selected.id);
+    if (processingState.selectedIndex === -1) {
+      showProcessingStatus('Status updated.', 'success');
+    }
   } catch (error) {
     showProcessingStatus('Update failed: ' + error.message, 'error');
   }
@@ -739,10 +934,8 @@ async function deleteProcessingNote(noteId) {
 
   try {
     await deleteNote(noteId);
-    await loadProcessingNotes();
     processingState.selectedIndex = -1;
-    renderProcessingList();
-    renderProcessingDetail();
+    await reloadProcessingAndSelect();
   } catch (error) {
     showProcessingStatus('Delete failed: ' + error.message, 'error');
   }

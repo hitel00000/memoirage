@@ -248,6 +248,20 @@ h1 {
     color: #111827;
 }
 
+.processing-legend {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-soft);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text-main);
+}
+
+.processing-legend p {
+    margin: 4px 0;
+}
+
 .processing-item {
     padding: 12px;
     border-bottom: 1px solid #eee;
@@ -369,6 +383,18 @@ h1 {
     min-height: 100px;
     background: #f9f9f9;
     white-space: pre-wrap;
+}
+
+.processing-content-input {
+    width: 100%;
+    min-height: 120px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--surface-soft);
+    color: var(--text-main);
+    margin: 6px 0 10px 0;
+    resize: vertical;
 }
 
 .processing-status {
