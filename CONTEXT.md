@@ -54,7 +54,8 @@ memoirage/
 4. Storage (`/storage`)
 - list done notes
 - SVG graph rendering of note links
-- add/delete links and delete notes
+- add links with relation dropdown + note text search
+- delete links and notes
 
 ## PWA alignment
 

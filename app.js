@@ -16,6 +16,7 @@ const storageState = {
   links: [],
   selectedNoteId: null
 };
+const linkTypeOptions = ['related', 'supports', 'contrasts', 'depends_on', 'duplicates'];
 
 const routeKeySet = new Set(routes.map((route) => route.key));
 
@@ -273,6 +274,29 @@ function getStorageRelatedLinks(noteId) {
   return storageState.links.filter((link) => link.source_id === noteId || link.target_id === noteId);
 }
 
+function getStorageTargetCandidates(noteId) {
+  return storageState.notes
+    .filter((item) => item.id !== noteId)
+    .map((item) => ({
+      id: item.id,
+      content: item.content || '(No content)',
+      display: trimText(item.content || '(No content)', 64)
+    }));
+}
+
+function findStorageTargetByQuery(noteId, query) {
+  const normalized = (query || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  const candidates = getStorageTargetCandidates(noteId);
+  const exact = candidates.find((item) => item.id === query || item.display.toLowerCase() === normalized);
+  if (exact) return exact;
+
+  const includes = candidates.filter((item) => item.content.toLowerCase().includes(normalized));
+  if (includes.length === 1) return includes[0];
+  return null;
+}
+
 function trimText(text, max = 42) {
   if (!text) return '(No content)';
   return text.length > max ? text.slice(0, max) + '...' : text;
@@ -462,9 +486,12 @@ function renderStorageDetail() {
   }
 
   const relatedLinks = getStorageRelatedLinks(note.id);
-  const targetOptions = storageState.notes
-    .filter((item) => item.id !== note.id)
-    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(trimText(item.content, 32))}</option>`)
+  const targetCandidates = getStorageTargetCandidates(note.id);
+  const targetOptions = targetCandidates
+    .map((item) => `<option value="${escapeHtml(item.display)}"></option>`)
+    .join('');
+  const relationOptions = linkTypeOptions
+    .map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)
     .join('');
 
   panel.className = '';
@@ -475,10 +502,12 @@ function renderStorageDetail() {
 
     <h3 class="storage-section-title">Add Link</h3>
     <div class="storage-link-form">
-      <select id="storageTarget" class="storage-select">${targetOptions || '<option value="">No target available</option>'}</select>
-      <input id="storageType" class="storage-input" maxlength="24" placeholder="e.g. related" value="related">
-      <button id="storageAddLink" class="storage-btn primary">Add</button>
+      <input id="storageTargetSearch" list="storageTargetOptions" class="storage-input" placeholder="Search note text or paste note id">
+      <datalist id="storageTargetOptions">${targetOptions}</datalist>
+      <select id="storageType" class="storage-select">${relationOptions}</select>
+      <button id="storageAddLink" class="storage-btn primary">Link Note</button>
     </div>
+    <p class="storage-link-help">Type part of a note to search target, then choose a relation.</p>
 
     <h3 class="storage-section-title">Related Links (${relatedLinks.length})</h3>
     <div id="storageLinks"></div>
@@ -525,13 +554,18 @@ function renderStorageLinks(relatedLinks, noteId) {
 }
 
 async function addStorageLink() {
-  const target = document.getElementById('storageTarget');
+  const target = document.getElementById('storageTargetSearch');
   const type = document.getElementById('storageType');
   if (!target || !type || !storageState.selectedNoteId) return;
 
-  const targetId = target.value;
+  const targetQuery = target.value.trim();
+  const targetMatch = findStorageTargetByQuery(storageState.selectedNoteId, targetQuery);
+  const targetId = targetMatch ? targetMatch.id : '';
   const linkType = type.value.trim() || 'related';
-  if (!targetId) return;
+  if (!targetId) {
+    showStorageStatus('Target note not found. Try a more specific keyword.', 'error');
+    return;
+  }
 
   const duplicated = storageState.links.find((link) =>
     link.source_id === storageState.selectedNoteId &&

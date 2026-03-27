@@ -26,6 +26,10 @@ Processing behavior:
 - allows toggling between `inbox` <-> `processing`
 - allows moving notes to `done`
 
+Storage link behavior:
+- relation type is selected via dropdown
+- target note is searched with text input (datalist suggestions)
+
 ## Repository Layout
 
 ```text
