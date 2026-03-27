@@ -4,8 +4,8 @@
   "description": "Offline-first personal knowledge capture app",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#667eea",
-  "theme_color": "#007bff",
+  "background_color": "#f5f2ec",
+  "theme_color": "#7b5e45",
   "orientation": "portrait",
   "scope": "./",
   "icons": [
