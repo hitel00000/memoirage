@@ -574,13 +574,13 @@ h1 {
 
 .storage-edge-label {
     font-size: 10px;
-    fill: #6b7280;
+    fill: var(--graph-edge-label);
     pointer-events: none;
 }
 
 .storage-node-label {
     font-size: 11px;
-    fill: #0f172a;
+    fill: var(--graph-node-label);
     pointer-events: none;
     text-anchor: middle;
 }
@@ -603,6 +603,8 @@ h1 {
     --success-text: #284328;
     --error-bg: #f1ddda;
     --error-text: #5a2922;
+    --graph-node-label: #2a221b;
+    --graph-edge-label: #5d5247;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -623,6 +625,8 @@ h1 {
         --success-text: #d9f0dc;
         --error-bg: #4a2e2a;
         --error-text: #ffd8d1;
+        --graph-node-label: #f3eadf;
+        --graph-edge-label: #d8c7b6;
     }
 }
 
@@ -765,7 +769,6 @@ textarea {
 .storage-empty,
 .storage-edge-label {
     color: var(--text-muted);
-    fill: var(--text-muted);
 }
 
 .storage-note-content {
