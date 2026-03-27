@@ -18,7 +18,7 @@ let db = null;  // IndexedDB or Firestore reference
 
 class IndexedDBStore {
   constructor() {
-    this.dbName = 'PKM';
+    this.dbName = 'Memoirage';
     this.version = 1;
     this.db = null;
   }

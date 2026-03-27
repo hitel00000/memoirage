@@ -1,6 +1,6 @@
-# PKM (Personal Knowledge Manager)
+# Memoirage
 
-PKM은 앱 서버 없이 동작하는 offline-first PWA입니다.  
+Memoirage는 앱 서버 없이 동작하는 offline-first PWA입니다.  
 노트는 브라우저 IndexedDB에 저장되며, 캡처/처리/저장(그래프) 흐름을 정적 파일만으로 실행합니다.
 
 ## 핵심 방향
@@ -13,7 +13,7 @@ PKM은 앱 서버 없이 동작하는 offline-first PWA입니다.
 ## 현재 구조
 
 ```
-pkm/
+memoirage/
 ├── CONTEXT.md
 ├── README.md
 ├── db.js

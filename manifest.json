@@ -1,6 +1,6 @@
 {
-  "name": "PKM - Personal Knowledge Manager",
-  "short_name": "PKM",
+  "name": "Memoirage",
+  "short_name": "Memoirage",
   "description": "개인 지식 관리 시스템",
   "start_url": "./index.html",
   "display": "standalone",

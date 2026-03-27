@@ -1,4 +1,4 @@
-# PKM Context Snapshot (2026-03-27)
+# Memoirage Context Snapshot (2026-03-27)
 
 ## Product stance
 
@@ -11,7 +11,7 @@
 All runtime files are in repository root:
 
 ```
-pkm/
+memoirage/
 ├── db.js
 ├── index.html
 ├── capture.html
