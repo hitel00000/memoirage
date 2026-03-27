@@ -523,8 +523,9 @@ h1 {
 }
 
 .storage-link-form {
-    display: grid;
-    grid-template-columns: 1fr 120px auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
     margin-bottom: 10px;
 }
@@ -540,6 +541,21 @@ h1 {
     border: 1px solid #cfd5df;
     padding: 8px 10px;
     font-size: 13px;
+}
+
+.storage-input {
+    flex: 1 1 220px;
+    min-width: 0;
+}
+
+.storage-select {
+    flex: 0 1 140px;
+    min-width: 110px;
+}
+
+.storage-link-form .storage-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .storage-btn {
