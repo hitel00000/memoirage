@@ -3,20 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memoirage - Storage Layer</title>
+    <title>Memoirage - 저장/그래프</title>
     <style>
+        :root {
+            --nav-grad-a: #667eea;
+            --nav-grad-b: #764ba2;
+            --border: #e6e6e6;
+            --panel-bg: #f7f8fb;
+            --text-muted: #6b7280;
+            --accent: #2e7dff;
+            --danger: #dc3545;
+            --success-bg: #d4edda;
+            --success-text: #155724;
+            --error-bg: #f8d7da;
+            --error-text: #721c24;
+        }
+
+        * { box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
             padding: 0;
             height: 100vh;
             overflow: hidden;
+            color: #111827;
+            background: #fff;
         }
+
         nav {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: linear-gradient(135deg, var(--nav-grad-a) 0%, var(--nav-grad-b) 100%);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
+
         nav ul {
             list-style: none;
             margin: 0;
@@ -24,80 +43,254 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            flex-wrap: wrap;
         }
-        nav li { margin: 0; }
-        nav a {
-            color: white;
-            text-decoration: none;
-            padding: 15px 20px;
-            display: block;
-            transition: background 0.3s;
-        }
-        nav a:hover { background: rgba(255,255,255,0.1); }
-        nav a.active { background: rgba(255,255,255,0.25); border-bottom: 2px solid white; }
 
-        .container {
-            display: flex;
-            height: calc(100vh - 50px);
+        nav a {
+            color: #fff;
+            text-decoration: none;
+            padding: 14px 18px;
+            display: block;
+            font-size: 14px;
+            transition: background 0.2s ease;
         }
-        .list-panel {
-            width: 50%;
-            border-right: 1px solid #ddd;
-            overflow-y: auto;
-            background: #f9f9f9;
+
+        nav a:hover { background: rgba(255, 255, 255, 0.1); }
+        nav a.active {
+            background: rgba(255, 255, 255, 0.22);
+            border-bottom: 2px solid #fff;
         }
-        .detail-panel {
-            width: 50%;
-            padding: 20px;
-            overflow-y: auto;
-            background: white;
-            border-left: 1px solid #ddd;
+
+        .layout {
+            height: calc(100vh - 48px);
+            display: grid;
+            grid-template-columns: 280px 1fr 360px;
+        }
+
+        .panel {
+            min-height: 0;
+            overflow: auto;
+        }
+
+        .left-panel {
+            border-right: 1px solid var(--border);
+            background: var(--panel-bg);
+        }
+
+        .center-panel {
+            position: relative;
+            border-right: 1px solid var(--border);
+            background: #fff;
+        }
+
+        .right-panel {
+            background: #fff;
+            padding: 16px;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #374151;
+            letter-spacing: 0.01em;
+            margin: 0;
+            padding: 14px 12px;
+            border-bottom: 1px solid var(--border);
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
 
         .note-item {
             padding: 12px;
-            border-bottom: 1px solid #eee;
+            border-bottom: 1px solid #eceef2;
             cursor: pointer;
-            background: white;
+            background: #fff;
+            transition: background 0.15s ease;
         }
-        .note-item:hover { background: #f0f0f0; }
-        .note-item.selected { background: #28a745; color: white; }
+
+        .note-item:hover { background: #f2f6ff; }
+        .note-item.selected {
+            background: #eaf1ff;
+            border-left: 3px solid var(--accent);
+            padding-left: 9px;
+        }
 
         .note-content {
-            font-size: 14px;
+            font-size: 13px;
+            line-height: 1.35;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
         .note-date {
+            margin-top: 6px;
             font-size: 11px;
-            opacity: 0.6;
+            color: var(--text-muted);
+        }
+
+        #graphCanvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .empty {
+            padding: 18px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .status {
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+        }
+
+        .status.show { display: block; }
+        .status.success { background: var(--success-bg); color: var(--success-text); }
+        .status.error { background: var(--error-bg); color: var(--error-text); }
+
+        .detail-title {
+            margin: 0 0 8px 0;
+            font-size: 20px;
+        }
+
+        .meta {
+            margin: 0 0 14px 0;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .note-box {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            min-height: 96px;
+            font-size: 14px;
+            line-height: 1.5;
+            background: #fbfcff;
+            white-space: pre-wrap;
+        }
+
+        .section-title {
+            margin: 18px 0 8px 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .link-form {
+            display: grid;
+            grid-template-columns: 1fr 120px auto;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        input, select, button {
+            border-radius: 6px;
+            border: 1px solid #cfd5df;
+            padding: 8px 10px;
+            font-size: 13px;
         }
 
         button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
-            margin: 5px 5px 5px 0;
+            border: none;
         }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .btn-primary:hover { background: #1e69e6; }
+
         .btn-danger {
-            background: #dc3545;
-            color: white;
+            background: var(--danger);
+            color: #fff;
             width: 100%;
+            margin-top: 12px;
         }
+
         .btn-danger:hover { background: #c82333; }
 
-        .status {
-            padding: 8px 12px;
-            margin: 10px 0;
-            border-radius: 4px;
-            display: none;
+        .link-row {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: #fff;
         }
-        .status.show { display: block; }
-        .status.success { background: #d4edda; color: #155724; }
-        .status.error { background: #f8d7da; color: #721c24; }
+
+        .link-row-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .link-type {
+            font-size: 11px;
+            color: #fff;
+            background: #4b5563;
+            border-radius: 999px;
+            padding: 2px 8px;
+        }
+
+        .link-target {
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .link-remove {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid #f2b3b9;
+            padding: 4px 8px;
+        }
+
+        .link-remove:hover { background: #ffeef0; }
+
+        .graph-overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.88);
+            color: #4b5563;
+            font-size: 13px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .graph-overlay.show { display: flex; }
+
+        @media (max-width: 1024px) {
+            .layout {
+                grid-template-columns: 260px 1fr;
+                grid-template-rows: 50% 50%;
+            }
+            .left-panel { grid-row: 1 / span 2; }
+            .center-panel { border-right: none; border-bottom: 1px solid var(--border); }
+            .right-panel { grid-column: 2; }
+        }
+
+        @media (max-width: 760px) {
+            body { overflow: auto; height: auto; }
+            .layout {
+                height: auto;
+                display: block;
+            }
+            .panel { height: auto; min-height: 280px; }
+            .center-panel { height: 340px; border-right: none; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+            .link-form { grid-template-columns: 1fr; }
+        }
     </style>
 
     <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
@@ -106,118 +299,391 @@
 <body>
     <nav>
         <ul>
-            <li><a href="./index.html">🏠 Home</a></li>
-            <li><a href="./capture.html">📝 Capture</a></li>
-            <li><a href="./processing.html">⚙️ Processing</a></li>
-            <li><a href="./graph.html" class="active">🕸️ Storage</a></li>
+            <li><a href="./index.html">Home</a></li>
+            <li><a href="./capture.html">Capture</a></li>
+            <li><a href="./processing.html">Processing</a></li>
+            <li><a href="./graph.html" class="active">Storage</a></li>
         </ul>
     </nav>
-    <div class="container">
-        <div class="list-panel" id="listPanel"></div>
-        <div class="detail-panel" id="detailPanel"><p>Select a note...</p></div>
+
+    <div class="layout">
+        <aside class="panel left-panel">
+            <h2 class="panel-title">완료 노트</h2>
+            <div id="listPanel"></div>
+        </aside>
+
+        <section class="panel center-panel">
+            <div id="graphCanvas"></div>
+            <div id="graphOverlay" class="graph-overlay"></div>
+        </section>
+
+        <aside class="panel right-panel">
+            <div id="statusBox" class="status"></div>
+            <div id="detailPanel" class="empty">왼쪽 목록 또는 그래프 노드를 선택하세요.</div>
+        </aside>
     </div>
 
     <script>
         let notes = [];
-        let selectedIndex = -1;
+        let links = [];
+        let selectedNoteId = null;
+        let network = null;
+
+        function generateId() {
+            return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (char) {
+                const random = Math.random() * 16 | 0;
+                const value = char === "x" ? random : (random & 0x3 | 0x8);
+                return value.toString(16);
+            });
+        }
+
+        function escapeHtml(input) {
+            return String(input || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function formatDate(value) {
+            try {
+                return new Date(value).toLocaleString();
+            } catch (err) {
+                return value || "";
+            }
+        }
+
+        function trimText(text, max = 42) {
+            if (!text) return "(내용 없음)";
+            return text.length > max ? text.slice(0, max) + "..." : text;
+        }
+
+        function getNoteById(id) {
+            return notes.find((note) => note.id === id) || null;
+        }
+
+        function getRelatedLinks(noteId) {
+            return links.filter((link) => link.source_id === noteId || link.target_id === noteId);
+        }
 
         async function init() {
             try {
                 await initDB();
-                console.log('Database initialized');
-                await loadNotes();
+                await loadData();
+                renderAll();
             } catch (err) {
-                console.error('Init failed:', err);
-                showStatus('Failed to initialize: ' + err.message, 'error');
+                console.error("Init failed:", err);
+                showStatus("초기화 실패: " + err.message, "error");
             }
         }
 
-        async function loadNotes() {
-            try {
-                notes = await getNotes({ status: 'done', include_deleted: false });
-                renderList();
-            } catch (err) {
-                console.error('Load failed:', err);
-                showStatus('Failed to load notes', 'error');
+        async function loadData() {
+            const doneNotes = await getNotes({ status: "done", include_deleted: false });
+            const allLinks = await getLinks({});
+
+            doneNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            notes = doneNotes;
+
+            const doneNoteIdSet = new Set(doneNotes.map((note) => note.id));
+            links = allLinks.filter((link) => doneNoteIdSet.has(link.source_id) && doneNoteIdSet.has(link.target_id));
+
+            if (selectedNoteId && !doneNoteIdSet.has(selectedNoteId)) {
+                selectedNoteId = null;
             }
+        }
+
+        function renderAll() {
+            renderList();
+            renderGraph();
+            renderDetail();
         }
 
         function renderList() {
-            const panel = document.getElementById('listPanel');
-            panel.innerHTML = '';
+            const panel = document.getElementById("listPanel");
+            panel.innerHTML = "";
 
             if (notes.length === 0) {
-                panel.innerHTML = '<div style="padding: 20px; color: #999;">No completed notes</div>';
+                panel.innerHTML = '<div class="empty">완료된 노트가 없습니다.</div>';
                 return;
             }
 
-            notes.forEach((note, idx) => {
-                const item = document.createElement('div');
-                item.className = 'note-item' + (idx === selectedIndex ? ' selected' : '');
-                item.onclick = () => selectNote(idx);
-                
-                const created = new Date(note.created_at).toLocaleString();
+            notes.forEach((note) => {
+                const item = document.createElement("div");
+                item.className = "note-item" + (note.id === selectedNoteId ? " selected" : "");
+                item.onclick = () => selectNote(note.id);
+
                 item.innerHTML = `
-                    <div class="note-content">${note.content || '(No content)'}</div>
-                    <div class="note-date">${created}</div>
+                    <div class="note-content">${escapeHtml(trimText(note.content))}</div>
+                    <div class="note-date">${escapeHtml(formatDate(note.created_at))}</div>
                 `;
+
                 panel.appendChild(item);
             });
         }
 
-        function selectNote(idx) {
-            selectedIndex = idx;
-            renderList();
-            renderDetail();
-        }
+        function renderGraph() {
+            const canvas = document.getElementById("graphCanvas");
+            const overlay = document.getElementById("graphOverlay");
+            overlay.className = "graph-overlay";
+            overlay.textContent = "";
 
-        async function renderDetail() {
-            const panel = document.getElementById('detailPanel');
-            if (selectedIndex < 0 || selectedIndex >= notes.length) {
-                panel.innerHTML = '<p>Select a note...</p>';
+            if (!window.vis) {
+                if (network) {
+                    network.destroy();
+                    network = null;
+                }
+                overlay.classList.add("show");
+                overlay.textContent = "그래프 라이브러리를 불러오지 못했습니다. 인터넷 연결 후 새로고침하세요.";
                 return;
             }
 
-            const note = notes[selectedIndex];
-            const created = new Date(note.created_at).toLocaleString();
+            if (notes.length === 0) {
+                if (network) {
+                    network.destroy();
+                    network = null;
+                }
+                overlay.classList.add("show");
+                overlay.textContent = "완료 노트가 없어서 그래프를 표시할 수 없습니다.";
+                return;
+            }
 
-            panel.innerHTML = `
-                <h2 style="margin-top: 0;">Note</h2>
-                <p><small>Created: ${created}</small></p>
-                <div style="border: 1px solid #ddd; padding: 12px; border-radius: 4px; min-height: 100px; background: #f9f9f9;">
-                    ${note.content || '(No content)'}
-                </div>
+            const nodeData = notes.map((note) => ({
+                id: note.id,
+                label: trimText(note.content, 26),
+                title: note.content || "(내용 없음)",
+                shape: "dot",
+                size: note.id === selectedNoteId ? 24 : 18,
+                color: note.id === selectedNoteId
+                    ? { background: "#2e7dff", border: "#1f5ec0" }
+                    : { background: "#8fb2ff", border: "#5f86de" }
+            }));
 
-                <button class="btn-danger" onclick="deleteNoteHandler('${note.id}', event)">Delete Note</button>
-            `;
-        }
+            const edgeData = links.map((link) => ({
+                id: link.id,
+                from: link.source_id,
+                to: link.target_id,
+                arrows: "to",
+                label: (link.type || "related").slice(0, 12)
+            }));
 
-        async function deleteNoteHandler(noteId, event) {
-            if (event) event.stopPropagation();
-            if (!confirm('Delete this note?')) return;
+            const data = {
+                nodes: new vis.DataSet(nodeData),
+                edges: new vis.DataSet(edgeData)
+            };
 
-            try {
-                await deleteNote(noteId);
-                notes = notes.filter(n => n.id !== noteId);
-                selectedIndex = -1;
-                renderList();
-                document.getElementById('detailPanel').innerHTML = '<p>Select a note...</p>';
-                showStatus('Note deleted', 'success');
-            } catch (err) {
-                console.error('Delete failed:', err);
-                showStatus('Delete failed', 'error');
+            const options = {
+                physics: {
+                    enabled: true,
+                    solver: "forceAtlas2Based",
+                    stabilization: { iterations: 120 }
+                },
+                interaction: {
+                    hover: true,
+                    navigationButtons: true
+                },
+                nodes: {
+                    font: { color: "#0f172a", size: 12 },
+                    borderWidth: 1.5
+                },
+                edges: {
+                    color: "#8b95a7",
+                    font: { align: "middle", size: 10, color: "#6b7280" },
+                    smooth: { type: "dynamic" }
+                }
+            };
+
+            if (network) {
+                network.setData(data);
+                network.setOptions(options);
+            } else {
+                network = new vis.Network(canvas, data, options);
+                network.on("selectNode", (params) => {
+                    if (params.nodes && params.nodes.length > 0) {
+                        selectNote(params.nodes[0], true);
+                    }
+                });
+            }
+
+            if (selectedNoteId) {
+                network.selectNodes([selectedNoteId]);
+                network.focus(selectedNoteId, { scale: 1.1, animation: { duration: 250 } });
             }
         }
 
-        function showStatus(msg, type) {
-            const div = document.createElement('div');
-            div.className = 'status show ' + type;
-            div.textContent = msg;
-            document.getElementById('detailPanel').insertBefore(div, document.getElementById('detailPanel').firstChild);
-            setTimeout(() => div.remove(), 3000);
+        function selectNote(noteId, fromGraph = false) {
+            selectedNoteId = noteId;
+            renderList();
+            renderDetail();
+
+            if (!fromGraph && network && window.vis) {
+                network.selectNodes([noteId]);
+                network.focus(noteId, { scale: 1.1, animation: { duration: 250 } });
+            }
         }
 
-        window.addEventListener('DOMContentLoaded', init);
+        function renderDetail() {
+            const panel = document.getElementById("detailPanel");
+
+            if (!selectedNoteId) {
+                panel.className = "empty";
+                panel.textContent = "왼쪽 목록 또는 그래프 노드를 선택하세요.";
+                return;
+            }
+
+            const note = getNoteById(selectedNoteId);
+            if (!note) {
+                panel.className = "empty";
+                panel.textContent = "선택한 노트를 찾을 수 없습니다.";
+                return;
+            }
+
+            const relatedLinks = getRelatedLinks(note.id);
+            const targetOptions = notes
+                .filter((item) => item.id !== note.id)
+                .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(trimText(item.content, 32))}</option>`)
+                .join("");
+
+            panel.className = "";
+            panel.innerHTML = `
+                <h2 class="detail-title">노트 상세</h2>
+                <p class="meta">생성: ${escapeHtml(formatDate(note.created_at))}</p>
+                <div class="note-box">${escapeHtml(note.content || "(내용 없음)")}</div>
+
+                <h3 class="section-title">링크 추가</h3>
+                <div class="link-form">
+                    <select id="linkTargetSelect">${targetOptions || '<option value="">연결 가능한 노트 없음</option>'}</select>
+                    <input id="linkTypeInput" maxlength="24" placeholder="예: related" value="related" />
+                    <button class="btn-primary" onclick="addLink()">추가</button>
+                </div>
+
+                <h3 class="section-title">연결된 링크 (${relatedLinks.length})</h3>
+                <div id="relatedLinks"></div>
+
+                <button class="btn-danger" onclick="deleteSelectedNote()">노트 삭제</button>
+            `;
+
+            renderRelatedLinks(note.id, relatedLinks);
+        }
+
+        function renderRelatedLinks(noteId, relatedLinks) {
+            const container = document.getElementById("relatedLinks");
+            if (!container) return;
+
+            if (relatedLinks.length === 0) {
+                container.innerHTML = '<div class="empty" style="padding: 10px 0;">연결된 링크가 없습니다.</div>';
+                return;
+            }
+
+            container.innerHTML = relatedLinks.map((link) => {
+                const isOutgoing = link.source_id === noteId;
+                const otherId = isOutgoing ? link.target_id : link.source_id;
+                const other = getNoteById(otherId);
+                const direction = isOutgoing ? "->" : "<-";
+
+                return `
+                    <div class="link-row">
+                        <div class="link-row-head">
+                            <span class="link-type">${escapeHtml(link.type || "related")}</span>
+                            <button class="link-remove" onclick="deleteLinkHandler('${escapeHtml(link.id)}')">삭제</button>
+                        </div>
+                        <div class="link-target">${direction} ${escapeHtml(trimText(other ? other.content : "(삭제된 노트)", 48))}</div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function addLink() {
+            if (!selectedNoteId) return;
+
+            const targetSelect = document.getElementById("linkTargetSelect");
+            const typeInput = document.getElementById("linkTypeInput");
+
+            const targetId = targetSelect ? targetSelect.value : "";
+            const linkType = (typeInput ? typeInput.value.trim() : "") || "related";
+
+            if (!targetId) {
+                showStatus("연결할 대상 노트를 선택하세요.", "error");
+                return;
+            }
+
+            const duplicated = links.find((link) =>
+                link.source_id === selectedNoteId &&
+                link.target_id === targetId &&
+                (link.type || "related") === linkType
+            );
+
+            if (duplicated) {
+                showStatus("같은 링크가 이미 존재합니다.", "error");
+                return;
+            }
+
+            try {
+                await saveLink({
+                    id: generateId(),
+                    source_id: selectedNoteId,
+                    target_id: targetId,
+                    type: linkType,
+                    weight: 1,
+                    created_at: new Date().toISOString()
+                });
+
+                await loadData();
+                renderAll();
+                showStatus("링크를 추가했습니다.", "success");
+            } catch (err) {
+                console.error("Add link failed:", err);
+                showStatus("링크 추가 실패: " + err.message, "error");
+            }
+        }
+
+        async function deleteLinkHandler(linkId) {
+            if (!confirm("이 링크를 삭제할까요?")) return;
+
+            try {
+                await deleteLink(linkId);
+                await loadData();
+                renderAll();
+                showStatus("링크를 삭제했습니다.", "success");
+            } catch (err) {
+                console.error("Delete link failed:", err);
+                showStatus("링크 삭제 실패: " + err.message, "error");
+            }
+        }
+
+        async function deleteSelectedNote() {
+            if (!selectedNoteId) return;
+            if (!confirm("선택한 노트를 삭제할까요?")) return;
+
+            try {
+                await deleteNote(selectedNoteId);
+
+                const related = getRelatedLinks(selectedNoteId);
+                for (const link of related) {
+                    await deleteLink(link.id);
+                }
+
+                selectedNoteId = null;
+                await loadData();
+                renderAll();
+                showStatus("노트를 삭제했습니다.", "success");
+            } catch (err) {
+                console.error("Delete note failed:", err);
+                showStatus("노트 삭제 실패: " + err.message, "error");
+            }
+        }
+
+        function showStatus(message, type) {
+            const box = document.getElementById("statusBox");
+            box.className = "status show " + type;
+            box.textContent = message;
+
+            setTimeout(() => {
+                box.className = "status";
+            }, 2500);
+        }
+
+        window.addEventListener("DOMContentLoaded", init);
     </script>
 </body>
 </html>
