@@ -17,10 +17,57 @@ const storageState = {
   selectedNoteId: null
 };
 
-function getRouteKey() {
-  const hash = window.location.hash.replace('#', '').trim();
-  if (!hash) return 'home';
-  return routes.some((route) => route.key === hash) ? hash : 'home';
+const routeKeySet = new Set(routes.map((route) => route.key));
+
+function getBasePath() {
+  const path = window.location.pathname;
+  if (path.endsWith('/index.html')) {
+    return path.slice(0, -'/index.html'.length) || '/';
+  }
+  return '/';
+}
+
+function normalizePath(path) {
+  const withLeadingSlash = path.startsWith('/') ? path : '/' + path;
+  return withLeadingSlash.replace(/\/+$/, '') || '/';
+}
+
+function routePath(key) {
+  const base = getBasePath();
+  const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
+  if (key === 'home') return (cleanBase || '') + '/';
+  return (cleanBase || '') + '/' + key;
+}
+
+function getRouteKeyFromLocation() {
+  const base = normalizePath(getBasePath());
+  const current = normalizePath(window.location.pathname);
+  const relative = current.startsWith(base) ? current.slice(base.length) : current;
+  const clean = relative.replace(/^\/+/, '');
+
+  if (!clean || clean === 'index.html') return 'home';
+  if (routeKeySet.has(clean)) return clean;
+  return 'home';
+}
+
+function applyRouteFromQueryFallback() {
+  const params = new URLSearchParams(window.location.search);
+  const routePathQuery = params.get('route');
+  if (!routePathQuery) return;
+
+  try {
+    const decoded = decodeURIComponent(routePathQuery);
+    const url = new URL(decoded, window.location.origin);
+    window.history.replaceState({}, '', url.pathname);
+  } catch (error) {
+    console.warn('Invalid route query fallback:', error);
+  }
+}
+
+function navigateToRoute(routeKey, replace = false) {
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method]({}, '', routePath(routeKey));
+  renderRoute();
 }
 
 function renderNav(activeKey) {
@@ -28,10 +75,12 @@ function renderNav(activeKey) {
   nav.innerHTML = `
     <nav class="spa-nav">
       <ul>
-        ${routes.map((route) => `<li><a href="#${route.key}" class="${route.key === activeKey ? 'active' : ''}">${route.label}</a></li>`).join('')}
+        ${routes.map((route) => `<li><a href="${routePath(route.key)}" data-route="${route.key}" class="${route.key === activeKey ? 'active' : ''}">${route.label}</a></li>`).join('')}
       </ul>
     </nav>
   `;
+
+  bindRouteLinks(nav);
 }
 
 function renderHome() {
@@ -42,15 +91,15 @@ function renderHome() {
       <p class="subtitle">Capture fleeting thoughts and connect them later.</p>
 
       <div class="menu">
-        <a href="#capture" class="menu-item">
+        <a href="${routePath('capture')}" data-route="capture" class="menu-item">
           <h3>Capture</h3>
           <p>Save ideas quickly as inbox notes.</p>
         </a>
-        <a href="#processing" class="menu-item">
+        <a href="${routePath('processing')}" data-route="processing" class="menu-item">
           <h3>Processing</h3>
           <p>Review inbox notes and move them forward.</p>
         </a>
-        <a href="#storage" class="menu-item">
+        <a href="${routePath('storage')}" data-route="storage" class="menu-item">
           <h3>Storage</h3>
           <p>Browse done notes and manage links.</p>
         </a>
@@ -90,6 +139,8 @@ function renderHome() {
     deferredPrompt = null;
     installBtn.style.display = 'none';
   });
+
+  bindRouteLinks(root);
 }
 
 function renderPlaceholder(title) {
@@ -677,7 +728,7 @@ function clearTimers() {
 async function renderRoute() {
   clearTimers();
 
-  const route = getRouteKey();
+  const route = getRouteKeyFromLocation();
   renderNav(route);
 
   if (route === 'home') {
@@ -708,6 +759,8 @@ async function renderRoute() {
 }
 
 async function initApp() {
+  applyRouteFromQueryFallback();
+
   try {
     await initDB();
     await renderRoute();
@@ -721,12 +774,12 @@ async function initApp() {
     `;
   }
 
-  window.addEventListener('hashchange', () => {
+  window.addEventListener('popstate', () => {
     renderRoute();
   });
 
   window.addEventListener('resize', () => {
-    if (getRouteKey() === 'storage') {
+    if (getRouteKeyFromLocation() === 'storage') {
       renderStorageGraph();
     }
   });
@@ -745,6 +798,17 @@ async function initApp() {
       });
     });
   }
+}
+
+function bindRouteLinks(scope) {
+  scope.querySelectorAll('a[data-route]').forEach((anchor) => {
+    anchor.addEventListener('click', (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const routeKey = anchor.dataset.route || 'home';
+      navigateToRoute(routeKey);
+    });
+  });
 }
 
 window.addEventListener('DOMContentLoaded', initApp);
