@@ -46,8 +46,9 @@ memoirage/
 - save into `status: inbox`
 
 3. Processing (`/processing`)
-- review inbox notes
-- move to `processing` or `done`
+- review both `inbox` and `processing` notes
+- toggle note status between `inbox` and `processing`
+- move to `done`
 - soft delete notes
 
 4. Storage (`/storage`)

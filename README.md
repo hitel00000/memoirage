@@ -14,12 +14,17 @@ The app runs as a single-page application (SPA) with History API routing.
 
 - `/` -> Home
 - `/capture` -> Capture
-- `/processing` -> Processing
+- `/processing` -> Processing Queue
 - `/storage` -> Storage
 
 Static-host fallback:
 - `404.html` redirects unknown paths to `index.html?route=...`
 - `app.js` restores the route from query and renders the correct screen
+
+Processing behavior:
+- shows both `inbox` and `processing` notes
+- allows toggling between `inbox` <-> `processing`
+- allows moving notes to `done`
 
 ## Repository Layout
 

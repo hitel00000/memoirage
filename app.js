@@ -227,7 +227,14 @@ function showCaptureStatus(element, message, type) {
 }
 
 async function loadProcessingNotes() {
-  processingState.notes = await getNotes({ status: 'inbox', include_deleted: false });
+  const [inboxNotes, processingNotes] = await Promise.all([
+    getNotes({ status: 'inbox', include_deleted: false }),
+    getNotes({ status: 'processing', include_deleted: false })
+  ]);
+
+  processingState.notes = [...processingNotes, ...inboxNotes].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
 }
 
 function renderProcessing() {
@@ -269,6 +276,12 @@ function getStorageRelatedLinks(noteId) {
 function trimText(text, max = 42) {
   if (!text) return '(No content)';
   return text.length > max ? text.slice(0, max) + '...' : text;
+}
+
+function getNoteStatusLabel(status) {
+  if (status === 'processing') return 'Processing';
+  if (status === 'done') return 'Done';
+  return 'Inbox';
 }
 
 function renderStorage() {
@@ -600,7 +613,10 @@ function renderProcessingList() {
       <div class="processing-item${selectedClass}">
         <div class="processing-item-content" data-action="select" data-idx="${idx}">
           <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
-          <div class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
+          <div class="processing-item-meta">
+            <span class="processing-status-chip ${escapeHtml(note.status || 'inbox')}">${escapeHtml(getNoteStatusLabel(note.status))}</span>
+            <span class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</span>
+          </div>
         </div>
         <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">Delete</button>
       </div>
@@ -633,22 +649,31 @@ function renderProcessingDetail() {
     return;
   }
 
+  const currentStatus = selected.status || 'inbox';
+  const toggleTarget = currentStatus === 'processing' ? 'inbox' : 'processing';
+  const toggleLabel = currentStatus === 'processing' ? 'Move back to Inbox' : 'Start Processing';
+  const toggleHelp = currentStatus === 'processing'
+    ? 'Send this note back for later review.'
+    : 'Move this note into the active processing queue.';
+
   panel.innerHTML = `
     <div id="processingStatus" class="processing-status"></div>
     <h2 style="margin-top: 0;">Note</h2>
     <p><small>Created: ${escapeHtml(new Date(selected.created_at).toLocaleString())}</small></p>
+    <p><small>Current status: <strong>${escapeHtml(getNoteStatusLabel(currentStatus))}</strong></small></p>
     <div class="processing-note-box">${escapeHtml(selected.content || '(No content)')}</div>
 
     <div class="processing-btn-row">
-      <button class="processing-btn primary" id="moveProcessingBtn">Move to Processing</button>
+      <button class="processing-btn primary" id="toggleProcessingBtn">${toggleLabel}</button>
       <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
     </div>
+    <p class="processing-help-text">${escapeHtml(toggleHelp)}</p>
 
     <button class="processing-btn danger" id="deleteNoteBtn">Delete Note</button>
   `;
 
-  document.getElementById('moveProcessingBtn').addEventListener('click', async () => {
-    await updateProcessingStatus('processing');
+  document.getElementById('toggleProcessingBtn').addEventListener('click', async () => {
+    await updateProcessingStatus(toggleTarget);
   });
 
   document.getElementById('moveDoneBtn').addEventListener('click', async () => {
