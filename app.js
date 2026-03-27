@@ -11,6 +11,11 @@ const processingState = {
   notes: [],
   selectedIndex: -1
 };
+const storageState = {
+  notes: [],
+  links: [],
+  selectedNoteId: null
+};
 
 function getRouteKey() {
   const hash = window.location.hash.replace('#', '').trim();
@@ -187,6 +192,348 @@ function renderProcessing() {
   renderProcessingDetail();
 }
 
+async function loadStorageData() {
+  const doneNotes = await getNotes({ status: 'done', include_deleted: false });
+  const allLinks = await getLinks({});
+
+  doneNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  storageState.notes = doneNotes;
+
+  const doneIds = new Set(doneNotes.map((note) => note.id));
+  storageState.links = allLinks.filter((link) => doneIds.has(link.source_id) && doneIds.has(link.target_id));
+
+  if (storageState.selectedNoteId && !doneIds.has(storageState.selectedNoteId)) {
+    storageState.selectedNoteId = null;
+  }
+}
+
+function getStorageNoteById(id) {
+  return storageState.notes.find((note) => note.id === id) || null;
+}
+
+function getStorageRelatedLinks(noteId) {
+  return storageState.links.filter((link) => link.source_id === noteId || link.target_id === noteId);
+}
+
+function trimText(text, max = 42) {
+  if (!text) return '(No content)';
+  return text.length > max ? text.slice(0, max) + '...' : text;
+}
+
+function renderStorage() {
+  const root = document.getElementById('app-root');
+  root.innerHTML = `
+    <div class="storage-wrap">
+      <aside class="storage-panel storage-left">
+        <h2 class="storage-title">Done Notes</h2>
+        <div id="storageList"></div>
+      </aside>
+      <section class="storage-panel storage-center">
+        <div id="storageGraph" class="storage-graph"></div>
+      </section>
+      <aside class="storage-panel storage-right">
+        <div id="storageStatus" class="storage-status"></div>
+        <div id="storageDetail" class="storage-empty">Select a note from the list or graph.</div>
+      </aside>
+    </div>
+  `;
+
+  renderStorageList();
+  renderStorageGraph();
+  renderStorageDetail();
+}
+
+function renderStorageList() {
+  const panel = document.getElementById('storageList');
+  if (!panel) return;
+
+  if (storageState.notes.length === 0) {
+    panel.innerHTML = '<div class="storage-empty">No completed notes yet.</div>';
+    return;
+  }
+
+  panel.innerHTML = storageState.notes.map((note) => {
+    const selectedClass = note.id === storageState.selectedNoteId ? ' selected' : '';
+    return `
+      <div class="storage-note-item${selectedClass}" data-id="${note.id}">
+        <div class="storage-note-content">${escapeHtml(trimText(note.content))}</div>
+        <div class="storage-note-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
+      </div>
+    `;
+  }).join('');
+
+  panel.querySelectorAll('.storage-note-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      storageState.selectedNoteId = item.dataset.id;
+      renderStorageList();
+      renderStorageGraph();
+      renderStorageDetail();
+    });
+  });
+}
+
+function computeStoragePositions(width, height) {
+  const padding = 56;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = Math.max(40, Math.min(width, height) / 2 - padding);
+  const positions = new Map();
+
+  storageState.notes.forEach((note, index) => {
+    const angle = (Math.PI * 2 * index) / storageState.notes.length;
+    const jitter = (index % 3) * 10;
+    positions.set(note.id, {
+      x: centerX + Math.cos(angle) * (radius - jitter),
+      y: centerY + Math.sin(angle) * (radius - jitter)
+    });
+  });
+
+  return positions;
+}
+
+function createSvgEl(tag, attrs = {}) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.keys(attrs).forEach((key) => el.setAttribute(key, attrs[key]));
+  return el;
+}
+
+function renderStorageGraph() {
+  const panel = document.getElementById('storageGraph');
+  if (!panel) return;
+  panel.innerHTML = '';
+
+  if (storageState.notes.length === 0) {
+    panel.innerHTML = '<div class="storage-empty">No completed notes to render yet.</div>';
+    return;
+  }
+
+  const width = Math.max(320, panel.clientWidth || 320);
+  const height = Math.max(260, panel.clientHeight || 260);
+  const positions = computeStoragePositions(width, height);
+
+  const svg = createSvgEl('svg', { class: 'storage-graph-svg', viewBox: `0 0 ${width} ${height}` });
+  const defs = createSvgEl('defs');
+  const marker = createSvgEl('marker', {
+    id: 'spa-arrow',
+    viewBox: '0 0 10 10',
+    refX: '9',
+    refY: '5',
+    markerWidth: '7',
+    markerHeight: '7',
+    orient: 'auto-start-reverse'
+  });
+  marker.appendChild(createSvgEl('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#8b95a7' }));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  storageState.links.forEach((link) => {
+    const from = positions.get(link.source_id);
+    const to = positions.get(link.target_id);
+    if (!from || !to) return;
+
+    svg.appendChild(createSvgEl('line', {
+      x1: from.x,
+      y1: from.y,
+      x2: to.x,
+      y2: to.y,
+      class: 'storage-edge',
+      'marker-end': 'url(#spa-arrow)'
+    }));
+
+    const label = createSvgEl('text', {
+      x: (from.x + to.x) / 2,
+      y: (from.y + to.y) / 2 - 4,
+      class: 'storage-edge-label'
+    });
+    label.textContent = (link.type || 'related').slice(0, 12);
+    svg.appendChild(label);
+  });
+
+  storageState.notes.forEach((note) => {
+    const point = positions.get(note.id);
+    const selected = note.id === storageState.selectedNoteId;
+    const radius = selected ? 18 : 14;
+
+    const node = createSvgEl('circle', {
+      cx: point.x,
+      cy: point.y,
+      r: radius,
+      class: 'storage-node' + (selected ? ' selected' : '')
+    });
+    node.addEventListener('click', () => {
+      storageState.selectedNoteId = note.id;
+      renderStorageList();
+      renderStorageGraph();
+      renderStorageDetail();
+    });
+    svg.appendChild(node);
+
+    const text = createSvgEl('text', {
+      x: point.x,
+      y: point.y + radius + 13,
+      class: 'storage-node-label'
+    });
+    text.textContent = trimText(note.content, 16);
+    svg.appendChild(text);
+  });
+
+  panel.appendChild(svg);
+}
+
+function renderStorageDetail() {
+  const panel = document.getElementById('storageDetail');
+  if (!panel) return;
+
+  if (!storageState.selectedNoteId) {
+    panel.className = 'storage-empty';
+    panel.textContent = 'Select a note from the list or graph.';
+    return;
+  }
+
+  const note = getStorageNoteById(storageState.selectedNoteId);
+  if (!note) {
+    panel.className = 'storage-empty';
+    panel.textContent = 'Selected note was not found.';
+    return;
+  }
+
+  const relatedLinks = getStorageRelatedLinks(note.id);
+  const targetOptions = storageState.notes
+    .filter((item) => item.id !== note.id)
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(trimText(item.content, 32))}</option>`)
+    .join('');
+
+  panel.className = '';
+  panel.innerHTML = `
+    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Note Detail</h2>
+    <p style="margin: 0 0 14px 0; color: #6b7280; font-size: 12px;">Created: ${escapeHtml(new Date(note.created_at).toLocaleString())}</p>
+    <div class="storage-note-box">${escapeHtml(note.content || '(No content)')}</div>
+
+    <h3 class="storage-section-title">Add Link</h3>
+    <div class="storage-link-form">
+      <select id="storageTarget" class="storage-select">${targetOptions || '<option value="">No target available</option>'}</select>
+      <input id="storageType" class="storage-input" maxlength="24" placeholder="e.g. related" value="related">
+      <button id="storageAddLink" class="storage-btn primary">Add</button>
+    </div>
+
+    <h3 class="storage-section-title">Related Links (${relatedLinks.length})</h3>
+    <div id="storageLinks"></div>
+
+    <button id="storageDeleteNote" class="storage-btn danger">Delete Note</button>
+  `;
+
+  renderStorageLinks(relatedLinks, note.id);
+
+  document.getElementById('storageAddLink').addEventListener('click', addStorageLink);
+  document.getElementById('storageDeleteNote').addEventListener('click', deleteStorageNote);
+}
+
+function renderStorageLinks(relatedLinks, noteId) {
+  const container = document.getElementById('storageLinks');
+  if (!container) return;
+
+  if (relatedLinks.length === 0) {
+    container.innerHTML = '<div class="storage-empty" style="padding: 10px 0;">No related links.</div>';
+    return;
+  }
+
+  container.innerHTML = relatedLinks.map((link) => {
+    const outgoing = link.source_id === noteId;
+    const otherId = outgoing ? link.target_id : link.source_id;
+    const other = getStorageNoteById(otherId);
+    const direction = outgoing ? '->' : '<-';
+    return `
+      <div class="storage-link-row">
+        <div class="storage-link-head">
+          <span class="storage-link-type">${escapeHtml(link.type || 'related')}</span>
+          <button class="storage-link-remove" data-link-id="${link.id}">Delete</button>
+        </div>
+        <div>${direction} ${escapeHtml(trimText(other ? other.content : '(Deleted note)', 48))}</div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.storage-link-remove').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await deleteStorageLink(btn.dataset.linkId);
+    });
+  });
+}
+
+async function addStorageLink() {
+  const target = document.getElementById('storageTarget');
+  const type = document.getElementById('storageType');
+  if (!target || !type || !storageState.selectedNoteId) return;
+
+  const targetId = target.value;
+  const linkType = type.value.trim() || 'related';
+  if (!targetId) return;
+
+  const duplicated = storageState.links.find((link) =>
+    link.source_id === storageState.selectedNoteId &&
+    link.target_id === targetId &&
+    (link.type || 'related') === linkType
+  );
+  if (duplicated) {
+    showStorageStatus('The same link already exists.', 'error');
+    return;
+  }
+
+  await saveLink({
+    id: generateId(),
+    source_id: storageState.selectedNoteId,
+    target_id: targetId,
+    type: linkType,
+    weight: 1,
+    created_at: new Date().toISOString()
+  });
+
+  await loadStorageData();
+  renderStorageList();
+  renderStorageGraph();
+  renderStorageDetail();
+  showStorageStatus('Link added.', 'success');
+}
+
+async function deleteStorageLink(linkId) {
+  if (!confirm('Delete this link?')) return;
+  await deleteLink(linkId);
+  await loadStorageData();
+  renderStorageList();
+  renderStorageGraph();
+  renderStorageDetail();
+  showStorageStatus('Link deleted.', 'success');
+}
+
+async function deleteStorageNote() {
+  if (!storageState.selectedNoteId) return;
+  if (!confirm('Delete selected note?')) return;
+
+  const noteId = storageState.selectedNoteId;
+  await deleteNote(noteId);
+  const related = getStorageRelatedLinks(noteId);
+  for (const link of related) {
+    await deleteLink(link.id);
+  }
+
+  storageState.selectedNoteId = null;
+  await loadStorageData();
+  renderStorageList();
+  renderStorageGraph();
+  renderStorageDetail();
+  showStorageStatus('Note deleted.', 'success');
+}
+
+function showStorageStatus(message, type) {
+  const status = document.getElementById('storageStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.className = 'storage-status show ' + type;
+  setTimeout(() => {
+    status.className = 'storage-status';
+  }, 2500);
+}
+
 function renderProcessingList() {
   const panel = document.getElementById('processingList');
   if (!panel) return;
@@ -351,7 +698,13 @@ async function renderRoute() {
     return;
   }
 
-  renderPlaceholder('Storage');
+  if (route !== 'storage') {
+    renderPlaceholder('Not Found');
+    return;
+  }
+
+  await loadStorageData();
+  renderStorage();
 }
 
 async function initApp() {
@@ -370,6 +723,12 @@ async function initApp() {
 
   window.addEventListener('hashchange', () => {
     renderRoute();
+  });
+
+  window.addEventListener('resize', () => {
+    if (getRouteKey() === 'storage') {
+      renderStorageGraph();
+    }
   });
 
   window.addEventListener('beforeinstallprompt', (event) => {
