@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memoirage - 저장/그래프</title>
+    <title>Memoirage - Storage Graph</title>
     <style>
         :root {
             --nav-grad-a: #667eea;
@@ -134,6 +134,7 @@
         #graphCanvas {
             width: 100%;
             height: 100%;
+            overflow: hidden;
         }
 
         .empty {
@@ -271,6 +272,47 @@
 
         .graph-overlay.show { display: flex; }
 
+        .graph-svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: radial-gradient(circle at 20% 20%, #f9fbff 0%, #ffffff 70%);
+        }
+
+        .graph-node {
+            cursor: pointer;
+            fill: #8fb2ff;
+            stroke: #5f86de;
+            stroke-width: 2;
+        }
+
+        .graph-node.selected {
+            fill: #2e7dff;
+            stroke: #1f5ec0;
+            stroke-width: 3;
+        }
+
+        .graph-edge {
+            stroke: #8b95a7;
+            stroke-width: 1.6;
+            opacity: 0.92;
+        }
+
+        .graph-edge-label {
+            font-size: 10px;
+            fill: #6b7280;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        .graph-node-label {
+            font-size: 11px;
+            fill: #0f172a;
+            user-select: none;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
         @media (max-width: 1024px) {
             .layout {
                 grid-template-columns: 260px 1fr;
@@ -293,7 +335,6 @@
         }
     </style>
 
-    <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
     <script src="./db.js"></script>
 </head>
 <body>
@@ -308,7 +349,7 @@
 
     <div class="layout">
         <aside class="panel left-panel">
-            <h2 class="panel-title">완료 노트</h2>
+            <h2 class="panel-title">Done Notes</h2>
             <div id="listPanel"></div>
         </aside>
 
@@ -319,7 +360,7 @@
 
         <aside class="panel right-panel">
             <div id="statusBox" class="status"></div>
-            <div id="detailPanel" class="empty">왼쪽 목록 또는 그래프 노드를 선택하세요.</div>
+            <div id="detailPanel" class="empty">Select a note from the list or graph.</div>
         </aside>
     </div>
 
@@ -327,7 +368,6 @@
         let notes = [];
         let links = [];
         let selectedNoteId = null;
-        let network = null;
 
         function generateId() {
             return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (char) {
@@ -355,7 +395,7 @@
         }
 
         function trimText(text, max = 42) {
-            if (!text) return "(내용 없음)";
+            if (!text) return "(No content)";
             return text.length > max ? text.slice(0, max) + "..." : text;
         }
 
@@ -374,7 +414,7 @@
                 renderAll();
             } catch (err) {
                 console.error("Init failed:", err);
-                showStatus("초기화 실패: " + err.message, "error");
+                showStatus("Initialization failed: " + err.message, "error");
             }
         }
 
@@ -404,7 +444,7 @@
             panel.innerHTML = "";
 
             if (notes.length === 0) {
-                panel.innerHTML = '<div class="empty">완료된 노트가 없습니다.</div>';
+                panel.innerHTML = '<div class="empty">No completed notes yet.</div>';
                 return;
             }
 
@@ -422,104 +462,125 @@
             });
         }
 
+        function computeNodePositions(width, height) {
+            const padding = 56;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const radius = Math.max(40, Math.min(width, height) / 2 - padding);
+            const positions = new Map();
+
+            notes.forEach((note, index) => {
+                const angle = (Math.PI * 2 * index) / notes.length;
+                const jitter = (index % 3) * 10;
+                positions.set(note.id, {
+                    x: centerX + Math.cos(angle) * (radius - jitter),
+                    y: centerY + Math.sin(angle) * (radius - jitter)
+                });
+            });
+
+            return positions;
+        }
+
+        function createSvgEl(tag, attrs = {}) {
+            const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            Object.keys(attrs).forEach((key) => {
+                el.setAttribute(key, attrs[key]);
+            });
+            return el;
+        }
+
         function renderGraph() {
             const canvas = document.getElementById("graphCanvas");
             const overlay = document.getElementById("graphOverlay");
+            canvas.innerHTML = "";
             overlay.className = "graph-overlay";
             overlay.textContent = "";
 
-            if (!window.vis) {
-                if (network) {
-                    network.destroy();
-                    network = null;
-                }
-                overlay.classList.add("show");
-                overlay.textContent = "그래프 라이브러리를 불러오지 못했습니다. 인터넷 연결 후 새로고침하세요.";
-                return;
-            }
-
             if (notes.length === 0) {
-                if (network) {
-                    network.destroy();
-                    network = null;
-                }
                 overlay.classList.add("show");
-                overlay.textContent = "완료 노트가 없어서 그래프를 표시할 수 없습니다.";
+                overlay.textContent = "No completed notes to render yet.";
                 return;
             }
 
-            const nodeData = notes.map((note) => ({
-                id: note.id,
-                label: trimText(note.content, 26),
-                title: note.content || "(내용 없음)",
-                shape: "dot",
-                size: note.id === selectedNoteId ? 24 : 18,
-                color: note.id === selectedNoteId
-                    ? { background: "#2e7dff", border: "#1f5ec0" }
-                    : { background: "#8fb2ff", border: "#5f86de" }
-            }));
+            const width = Math.max(320, canvas.clientWidth || 320);
+            const height = Math.max(260, canvas.clientHeight || 260);
+            const positions = computeNodePositions(width, height);
 
-            const edgeData = links.map((link) => ({
-                id: link.id,
-                from: link.source_id,
-                to: link.target_id,
-                arrows: "to",
-                label: (link.type || "related").slice(0, 12)
-            }));
+            const svg = createSvgEl("svg", { class: "graph-svg", viewBox: `0 0 ${width} ${height}` });
 
-            const data = {
-                nodes: new vis.DataSet(nodeData),
-                edges: new vis.DataSet(edgeData)
-            };
+            const defs = createSvgEl("defs");
+            const marker = createSvgEl("marker", {
+                id: "arrow",
+                viewBox: "0 0 10 10",
+                refX: "9",
+                refY: "5",
+                markerWidth: "7",
+                markerHeight: "7",
+                orient: "auto-start-reverse"
+            });
+            marker.appendChild(createSvgEl("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#8b95a7" }));
+            defs.appendChild(marker);
+            svg.appendChild(defs);
 
-            const options = {
-                physics: {
-                    enabled: true,
-                    solver: "forceAtlas2Based",
-                    stabilization: { iterations: 120 }
-                },
-                interaction: {
-                    hover: true,
-                    navigationButtons: true
-                },
-                nodes: {
-                    font: { color: "#0f172a", size: 12 },
-                    borderWidth: 1.5
-                },
-                edges: {
-                    color: "#8b95a7",
-                    font: { align: "middle", size: 10, color: "#6b7280" },
-                    smooth: { type: "dynamic" }
-                }
-            };
+            const edgeGroup = createSvgEl("g");
+            links.forEach((link) => {
+                const from = positions.get(link.source_id);
+                const to = positions.get(link.target_id);
+                if (!from || !to) return;
 
-            if (network) {
-                network.setData(data);
-                network.setOptions(options);
-            } else {
-                network = new vis.Network(canvas, data, options);
-                network.on("selectNode", (params) => {
-                    if (params.nodes && params.nodes.length > 0) {
-                        selectNote(params.nodes[0], true);
-                    }
+                const edge = createSvgEl("line", {
+                    x1: from.x,
+                    y1: from.y,
+                    x2: to.x,
+                    y2: to.y,
+                    class: "graph-edge",
+                    "marker-end": "url(#arrow)"
                 });
-            }
+                edgeGroup.appendChild(edge);
 
-            if (selectedNoteId) {
-                network.selectNodes([selectedNoteId]);
-                network.focus(selectedNoteId, { scale: 1.1, animation: { duration: 250 } });
-            }
+                const label = createSvgEl("text", {
+                    x: (from.x + to.x) / 2,
+                    y: (from.y + to.y) / 2 - 4,
+                    class: "graph-edge-label"
+                });
+                label.textContent = (link.type || "related").slice(0, 12);
+                edgeGroup.appendChild(label);
+            });
+            svg.appendChild(edgeGroup);
+
+            const nodeGroup = createSvgEl("g");
+            notes.forEach((note) => {
+                const point = positions.get(note.id);
+                const isSelected = note.id === selectedNoteId;
+                const radius = isSelected ? 18 : 14;
+
+                const node = createSvgEl("circle", {
+                    cx: point.x,
+                    cy: point.y,
+                    r: radius,
+                    class: "graph-node" + (isSelected ? " selected" : "")
+                });
+                node.addEventListener("click", () => selectNote(note.id, true));
+                nodeGroup.appendChild(node);
+
+                const label = createSvgEl("text", {
+                    x: point.x,
+                    y: point.y + radius + 13,
+                    class: "graph-node-label"
+                });
+                label.textContent = trimText(note.content, 16);
+                nodeGroup.appendChild(label);
+            });
+            svg.appendChild(nodeGroup);
+
+            canvas.appendChild(svg);
         }
 
-        function selectNote(noteId, fromGraph = false) {
+        function selectNote(noteId) {
             selectedNoteId = noteId;
             renderList();
+            renderGraph();
             renderDetail();
-
-            if (!fromGraph && network && window.vis) {
-                network.selectNodes([noteId]);
-                network.focus(noteId, { scale: 1.1, animation: { duration: 250 } });
-            }
         }
 
         function renderDetail() {
@@ -527,14 +588,14 @@
 
             if (!selectedNoteId) {
                 panel.className = "empty";
-                panel.textContent = "왼쪽 목록 또는 그래프 노드를 선택하세요.";
+                panel.textContent = "Select a note from the list or graph.";
                 return;
             }
 
             const note = getNoteById(selectedNoteId);
             if (!note) {
                 panel.className = "empty";
-                panel.textContent = "선택한 노트를 찾을 수 없습니다.";
+                panel.textContent = "Selected note was not found.";
                 return;
             }
 
@@ -546,21 +607,21 @@
 
             panel.className = "";
             panel.innerHTML = `
-                <h2 class="detail-title">노트 상세</h2>
-                <p class="meta">생성: ${escapeHtml(formatDate(note.created_at))}</p>
-                <div class="note-box">${escapeHtml(note.content || "(내용 없음)")}</div>
+                <h2 class="detail-title">Note Detail</h2>
+                <p class="meta">Created: ${escapeHtml(formatDate(note.created_at))}</p>
+                <div class="note-box">${escapeHtml(note.content || "(No content)")}</div>
 
-                <h3 class="section-title">링크 추가</h3>
+                <h3 class="section-title">Add Link</h3>
                 <div class="link-form">
-                    <select id="linkTargetSelect">${targetOptions || '<option value="">연결 가능한 노트 없음</option>'}</select>
-                    <input id="linkTypeInput" maxlength="24" placeholder="예: related" value="related" />
-                    <button class="btn-primary" onclick="addLink()">추가</button>
+                    <select id="linkTargetSelect">${targetOptions || '<option value="">No target available</option>'}</select>
+                    <input id="linkTypeInput" maxlength="24" placeholder="e.g. related" value="related" />
+                    <button class="btn-primary" onclick="addLink()">Add</button>
                 </div>
 
-                <h3 class="section-title">연결된 링크 (${relatedLinks.length})</h3>
+                <h3 class="section-title">Related Links (${relatedLinks.length})</h3>
                 <div id="relatedLinks"></div>
 
-                <button class="btn-danger" onclick="deleteSelectedNote()">노트 삭제</button>
+                <button class="btn-danger" onclick="deleteSelectedNote()">Delete Note</button>
             `;
 
             renderRelatedLinks(note.id, relatedLinks);
@@ -571,7 +632,7 @@
             if (!container) return;
 
             if (relatedLinks.length === 0) {
-                container.innerHTML = '<div class="empty" style="padding: 10px 0;">연결된 링크가 없습니다.</div>';
+                container.innerHTML = '<div class="empty" style="padding: 10px 0;">No related links.</div>';
                 return;
             }
 
@@ -585,9 +646,9 @@
                     <div class="link-row">
                         <div class="link-row-head">
                             <span class="link-type">${escapeHtml(link.type || "related")}</span>
-                            <button class="link-remove" onclick="deleteLinkHandler('${escapeHtml(link.id)}')">삭제</button>
+                            <button class="link-remove" onclick="deleteLinkHandler('${escapeHtml(link.id)}')">Delete</button>
                         </div>
-                        <div class="link-target">${direction} ${escapeHtml(trimText(other ? other.content : "(삭제된 노트)", 48))}</div>
+                        <div class="link-target">${direction} ${escapeHtml(trimText(other ? other.content : "(Deleted note)", 48))}</div>
                     </div>
                 `;
             }).join("");
@@ -603,7 +664,7 @@
             const linkType = (typeInput ? typeInput.value.trim() : "") || "related";
 
             if (!targetId) {
-                showStatus("연결할 대상 노트를 선택하세요.", "error");
+                showStatus("Choose a target note first.", "error");
                 return;
             }
 
@@ -614,7 +675,7 @@
             );
 
             if (duplicated) {
-                showStatus("같은 링크가 이미 존재합니다.", "error");
+                showStatus("The same link already exists.", "error");
                 return;
             }
 
@@ -630,30 +691,30 @@
 
                 await loadData();
                 renderAll();
-                showStatus("링크를 추가했습니다.", "success");
+                showStatus("Link added.", "success");
             } catch (err) {
                 console.error("Add link failed:", err);
-                showStatus("링크 추가 실패: " + err.message, "error");
+                showStatus("Failed to add link: " + err.message, "error");
             }
         }
 
         async function deleteLinkHandler(linkId) {
-            if (!confirm("이 링크를 삭제할까요?")) return;
+            if (!confirm("Delete this link?")) return;
 
             try {
                 await deleteLink(linkId);
                 await loadData();
                 renderAll();
-                showStatus("링크를 삭제했습니다.", "success");
+                showStatus("Link deleted.", "success");
             } catch (err) {
                 console.error("Delete link failed:", err);
-                showStatus("링크 삭제 실패: " + err.message, "error");
+                showStatus("Failed to delete link: " + err.message, "error");
             }
         }
 
         async function deleteSelectedNote() {
             if (!selectedNoteId) return;
-            if (!confirm("선택한 노트를 삭제할까요?")) return;
+            if (!confirm("Delete selected note?")) return;
 
             try {
                 await deleteNote(selectedNoteId);
@@ -666,10 +727,10 @@
                 selectedNoteId = null;
                 await loadData();
                 renderAll();
-                showStatus("노트를 삭제했습니다.", "success");
+                showStatus("Note deleted.", "success");
             } catch (err) {
                 console.error("Delete note failed:", err);
-                showStatus("노트 삭제 실패: " + err.message, "error");
+                showStatus("Failed to delete note: " + err.message, "error");
             }
         }
 
@@ -683,6 +744,7 @@
             }, 2500);
         }
 
+        window.addEventListener("resize", renderGraph);
         window.addEventListener("DOMContentLoaded", init);
     </script>
 </body>
