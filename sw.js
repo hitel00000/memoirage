@@ -1,4 +1,4 @@
-const CACHE_NAME = 'memoirage-static-v2';
+const CACHE_NAME = 'memoirage-static-v3';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -7,6 +7,8 @@ const PRECACHE_URLS = [
   './capture.html',
   './manifest.json',
   './db.js',
+  './app.css',
+  './app.js',
   './shared.css',
   './shared.js',
   './favicon.svg',
