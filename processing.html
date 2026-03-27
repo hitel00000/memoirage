@@ -128,10 +128,10 @@
 <body>
     <nav>
         <ul>
-            <li><a href="./index.html">🏠 Home</a></li>
-            <li><a href="./capture.html">📝 Capture</a></li>
-            <li><a href="./processing.html" class="active">⚙️ Processing</a></li>
-            <li><a href="./graph.html">🕸️ Storage</a></li>
+            <li><a href="./index.html">Home</a></li>
+            <li><a href="./capture.html">Capture</a></li>
+            <li><a href="./processing.html" class="active">Processing</a></li>
+            <li><a href="./graph.html">Storage</a></li>
         </ul>
     </nav>
     <div class="container">
@@ -183,7 +183,7 @@
                         <div class="content">${note.content || '(No content)'}</div>
                         <div class="date">${created}</div>
                     </div>
-                    <button class="delete-btn" onclick="deleteNoteHandler('${note.id}', event)">🗑</button>
+                    <button class="delete-btn" onclick="deleteNoteHandler('${note.id}', event)">Delete</button>
                 `;
                 panel.appendChild(item);
             });
@@ -213,8 +213,8 @@
                 </div>
 
                 <div class="button-group">
-                    <button class="btn-primary" onclick="setStatus('processing')">→ Processing</button>
-                    <button class="btn-primary" onclick="setStatus('done')">✓ Done</button>
+                    <button class="btn-primary" onclick="setStatus('processing')">Move to Processing</button>
+                    <button class="btn-primary" onclick="setStatus('done')">Move to Done</button>
                 </div>
 
                 <button class="btn-danger" onclick="deleteNoteHandler('${note.id}', event)">Delete Note</button>
