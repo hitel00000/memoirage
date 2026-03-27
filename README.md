@@ -20,6 +20,7 @@ The app runs as a single-page application (SPA) with History API routing.
 Static-host fallback:
 - `404.html` redirects unknown paths to `index.html?route=...`
 - `app.js` restores the route from query and renders the correct screen
+- `capture/`, `processing/`, `storage/` route entry pages redirect to SPA shell (for simple static servers like `python -m http.server`)
 
 Processing behavior:
 - shows both `inbox` and `processing` notes
@@ -39,9 +40,12 @@ memoirage/
 |- README.md
 |- app.css
 |- app.js
+|- capture/
 |- db.js
 |- index.html
 |- manifest.json
+|- processing/
+|- storage/
 |- sw.js
 |- favicon.svg
 |- icon-192.png

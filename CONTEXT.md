@@ -17,7 +17,7 @@ Memoirage uses a single-page app shell:
 Routing model:
 - History API routes: `/`, `/capture`, `/processing`, `/storage`
 - `404.html` provides static-host fallback and route recovery via `?route=`
-- Legacy HTML route files were removed and are no longer supported
+- route entry pages (`capture/`, `processing/`, `storage/`) redirect into SPA shell for local static servers
 
 ## Repository layout
 
@@ -26,9 +26,12 @@ memoirage/
 |- 404.html
 |- app.css
 |- app.js
+|- capture/
 |- db.js
 |- index.html
 |- manifest.json
+|- processing/
+|- storage/
 |- sw.js
 |- favicon.svg
 |- icon-192.png

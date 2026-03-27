@@ -37,7 +37,7 @@ function routePath(key) {
   const base = getBasePath();
   const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
   if (key === 'home') return (cleanBase || '') + '/';
-  return (cleanBase || '') + '/' + key;
+  return (cleanBase || '') + '/' + key + '/';
 }
 
 function getRouteKeyFromLocation() {

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memoirage - Redirecting</title>
+  <script>
+    (function () {
+      var path = window.location.pathname;
+      var base = path.replace(/\/processing\/?$/, '/');
+      var redirectTarget = base + 'index.html?route=' + encodeURIComponent(base + 'processing/');
+      window.location.replace(redirectTarget);
+    })();
+  </script>
+</head>
+<body>
+  <p>Redirecting...</p>
+</body>
+</html>
