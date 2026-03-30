@@ -116,7 +116,12 @@ python -m http.server 8000
 
 Default: `IndexedDBStore`
 - object stores: `notes`, `links`, `evolutions`
-- filters by status/tag/query
+- note filters support common patterns:
+  - `status` or `statuses` (single/multi status)
+  - `tag` or `tags` + optional `tag_mode` (`any`/`all`)
+  - `q` (or `query`) text term matching
+  - `ids`, `created_from`, `created_to`
+  - `sort_by` (`created_at`/`updated_at`), `sort_dir` (`asc`/`desc`), `limit`
 - soft delete support
 
 Optional: `FirestoreStore`

@@ -106,7 +106,7 @@ Now:
 
 Next:
 - [x] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)
-- [ ] Refine data retrieval ergonomics in `db.js` for common filter patterns
+- [x] Refine data retrieval ergonomics in `db.js` for common filter patterns
 
 Later:
 - [ ] Add attachments model incrementally without breaking offline-first flow

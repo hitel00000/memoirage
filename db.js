@@ -21,6 +21,90 @@ const LINK_TYPE_MIGRATION_MAP = {
   'related':    'related'
 };
 
+const NOTE_STATUS_SET = new Set(['inbox', 'processing', 'done', 'deleted']);
+
+function _asArray(v) {
+  if (v === null || v === undefined) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+function _normalizeTerm(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function _normalizeTags(v) {
+  return _asArray(v)
+    .map((t) => _normalizeTerm(t).replace(/^#+/, ''))
+    .filter(Boolean);
+}
+
+function _normalizeStatuses(filters = {}) {
+  const list = [];
+  if (filters.status) list.push(filters.status);
+  if (filters.statuses) list.push(..._asArray(filters.statuses));
+  const statuses = list.map(_normalizeTerm).filter((s) => NOTE_STATUS_SET.has(s));
+  return [...new Set(statuses)];
+}
+
+function _normalizeTextTerms(v) {
+  return String(v || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function _buildNoteMatcher(filters = {}) {
+  const statuses = _normalizeStatuses(filters);
+  const requiredTags = _normalizeTags(filters.tags || filters.tag);
+  const tagMode = String(filters.tag_mode || 'any').toLowerCase() === 'all' ? 'all' : 'any';
+  const textTerms = _normalizeTextTerms(filters.q || filters.query);
+  const ids = new Set(_asArray(filters.ids).map(String).filter(Boolean));
+  const from = filters.created_from ? Date.parse(filters.created_from) : null;
+  const to = filters.created_to ? Date.parse(filters.created_to) : null;
+
+  return (note) => {
+    if (!note) return false;
+    const status = _normalizeTerm(note.status || 'inbox');
+    if (statuses.length && !statuses.includes(status)) return false;
+    if (filters.include_deleted === false && note.deleted_at) return false;
+    if (ids.size && !ids.has(String(note.id))) return false;
+
+    if (requiredTags.length) {
+      const noteTags = new Set(_normalizeTags(note.tags || []));
+      if (tagMode === 'all') {
+        if (requiredTags.some((tag) => !noteTags.has(tag))) return false;
+      } else if (!requiredTags.some((tag) => noteTags.has(tag))) {
+        return false;
+      }
+    }
+
+    if (textTerms.length) {
+      const content = _normalizeTerm(note.content || '');
+      if (textTerms.some((term) => !content.includes(term))) return false;
+    }
+
+    const created = note.created_at ? Date.parse(note.created_at) : null;
+    if (from !== null && Number.isFinite(from) && created !== null && Number.isFinite(created) && created < from) return false;
+    if (to !== null && Number.isFinite(to) && created !== null && Number.isFinite(created) && created > to) return false;
+
+    return true;
+  };
+}
+
+function _applyNoteSortAndLimit(notes, filters = {}) {
+  const sortBy = filters.sort_by === 'updated_at' ? 'updated_at' : 'created_at';
+  const sortDir = String(filters.sort_dir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+  const out = [...notes].sort((a, b) => {
+    const av = Date.parse(a && a[sortBy] ? a[sortBy] : 0) || 0;
+    const bv = Date.parse(b && b[sortBy] ? b[sortBy] : 0) || 0;
+    return (av - bv) * sortDir;
+  });
+  const limit = Number(filters.limit);
+  if (Number.isFinite(limit) && limit > 0) return out.slice(0, Math.floor(limit));
+  return out;
+}
+
 // ==================== IndexedDB ====================
 
 class IndexedDBStore {
@@ -85,12 +169,9 @@ class IndexedDBStore {
       const req = this._tx(['notes']).objectStore('notes').getAll();
       req.onerror = () => reject(req.error);
       req.onsuccess = () => {
-        let r = req.result;
-        if (filters.status) r = r.filter(n => n.status === filters.status);
-        if (filters.include_deleted === false) r = r.filter(n => !n.deleted_at);
-        if (filters.tag) r = r.filter(n => n.tags && n.tags.includes(filters.tag));
-        if (filters.q) { const q = filters.q.toLowerCase(); r = r.filter(n => n.content && n.content.toLowerCase().includes(q)); }
-        resolve(r);
+        const matcher = _buildNoteMatcher(filters);
+        const filtered = req.result.filter(matcher);
+        resolve(_applyNoteSortAndLimit(filtered, filters));
       };
     });
   }
@@ -206,13 +287,19 @@ class FirestoreStore {
 
   async getNotes(filters = {}) {
     let q = this._col('notes');
-    if (filters.status && filters.status !== 'all') q = q.where('status', '==', filters.status);
+    const statuses = _normalizeStatuses(filters);
+    const canServerFilterSingleStatus = statuses.length === 1;
+    if (canServerFilterSingleStatus) q = q.where('status', '==', statuses[0]);
     if (filters.include_deleted === false) q = q.where('deleted_at', '==', null);
     const snap = await q.get();
-    let r = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    if (filters.tag) r = r.filter(n => n.tags && n.tags.includes(filters.tag));
-    if (filters.q) { const qt = filters.q.toLowerCase(); r = r.filter(n => n.content && n.content.toLowerCase().includes(qt)); }
-    return r;
+    const notes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const matcher = _buildNoteMatcher(filters);
+    const filtered = notes.filter((note) => {
+      if (canServerFilterSingleStatus && _normalizeTerm(note.status || 'inbox') !== statuses[0]) return false;
+      if (filters.include_deleted === false && note.deleted_at) return false;
+      return matcher(note);
+    });
+    return _applyNoteSortAndLimit(filtered, filters);
   }
 
   async getNoteById(id) { const d = await this._col('notes').doc(id).get(); return d.exists ? { id: d.id, ...d.data() } : null; }
