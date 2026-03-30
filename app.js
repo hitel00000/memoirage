@@ -36,6 +36,11 @@ const LINK_TYPE_OPTIONS = ['derive', 'contradict', 'support', 'related'];
 const EVOLUTION_TYPE_OPTIONS = ['extends', 'shrinks', 'decay'];
 
 const routeKeySet = new Set(routes.map((r) => r.key));
+const ADVANCED_MODE_STORAGE_KEY = 'memoirage:advanced_mode';
+
+const uiState = {
+  advancedMode: false
+};
 
 // ── 라우팅 ──
 
@@ -86,6 +91,21 @@ function applyRouteFromQueryFallback() {
 function navigateToRoute(routeKey, replace = false) {
   window.history[replace ? 'replaceState' : 'pushState']({}, '', routePath(routeKey));
   renderRoute();
+}
+
+function loadUiState() {
+  try {
+    uiState.advancedMode = localStorage.getItem(ADVANCED_MODE_STORAGE_KEY) === '1';
+  } catch (_) {
+    uiState.advancedMode = false;
+  }
+}
+
+function setAdvancedMode(enabled) {
+  uiState.advancedMode = !!enabled;
+  try {
+    localStorage.setItem(ADVANCED_MODE_STORAGE_KEY, uiState.advancedMode ? '1' : '0');
+  } catch (_) {}
 }
 
 function bindRouteLinks(scope) {
@@ -218,6 +238,24 @@ function getNoteAttachments(note) {
       label: String(a.label || '').trim(),
       created_at: a.created_at || new Date().toISOString()
     }));
+}
+
+function normalizeClusterId(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  return raw.slice(0, 32);
+}
+
+function getClusterHue(clusterId) {
+  const input = String(clusterId || '');
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (h * 31 + input.charCodeAt(i)) % 360;
+  return h;
+}
+
+function renderClusterChip(note) {
+  if (!uiState.advancedMode || !note || !note.cluster_id) return '';
+  return `<span class="note-tag-chip cluster">cluster:${escapeHtml(note.cluster_id)}</span>`;
 }
 
 function createSvgEl(tag, attrs = {}) {
@@ -477,11 +515,12 @@ function renderProcessingList() {
     body.innerHTML = filtered.map((note) => {
       const sel = note.id === processingState.selectedNoteId ? ' selected' : '';
       const tagsHtml = renderTagChips(note, 3);
+      const clusterChip = renderClusterChip(note);
       return `
       <div class="processing-item${sel}">
         <div class="processing-item-content" data-action="select" data-id="${note.id}">
           <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
-          ${tagsHtml}
+          ${tagsHtml}${clusterChip ? `<div class="note-tag-row">${clusterChip}</div>` : ''}
           <div class="processing-item-meta">
             <span class="processing-status-chip ${escapeHtml(note.status || 'inbox')}">${note.status === 'processing' ? 'Processing' : 'Inbox'}</span>
             <span class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</span>
@@ -809,7 +848,7 @@ function renderStorage() {
   root.innerHTML = `
     <div class="storage-wrap">
       <aside class="storage-panel storage-left">
-        <h2 class="storage-title">Done Notes</h2>
+        <h2 class="storage-title">Done Notes${uiState.advancedMode ? ' <span class="advanced-badge">Advanced</span>' : ''}</h2>
         <div class="list-search-wrap storage-search-wrap">
           <input id="storageSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:done" value="${escapeHtml(storageState.query)}" />
           <div id="storageSearchMeta" class="list-search-meta"></div>
@@ -854,12 +893,16 @@ function renderStorageList() {
     panel.innerHTML = '<div class="storage-empty">No matching notes.</div>';
     return;
   }
-  panel.innerHTML = filtered.map((note) => `
+  panel.innerHTML = filtered.map((note) => {
+    const clusterChip = renderClusterChip(note);
+    return `
     <div class="storage-note-item${note.id === storageState.selectedNoteId ? ' selected' : ''}" data-id="${note.id}">
       <div class="storage-note-content">${escapeHtml(trimText(note.content))}</div>
       ${renderTagChips(note, 3)}
+      ${clusterChip ? `<div class="note-tag-row">${clusterChip}</div>` : ''}
       <div class="storage-note-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   panel.querySelectorAll('.storage-note-item').forEach((item) => {
     item.addEventListener('click', () => {
@@ -1088,12 +1131,18 @@ function renderStorageGraph() {
     const dimmed = !!selectedId && !selected && !isNeighbor;
     const degree = degreeByNode[note.id] || 0;
     const r = Math.min(20, (selected ? 16 : 12) + Math.min(6, degree * 0.6));
+    const clusterId = uiState.advancedMode ? normalizeClusterId(note.cluster_id) : null;
+    const clusterHue = clusterId ? getClusterHue(clusterId) : null;
+    const fillColor = clusterHue === null ? null : `hsl(${clusterHue} 70% ${selected ? 48 : 66}%)`;
+    const strokeColor = clusterHue === null ? null : `hsl(${clusterHue} 72% ${selected ? 34 : 42}%)`;
     const circle = createSvgEl('circle', {
       cx: pos.x,
       cy: pos.y,
       r,
       class: 'storage-node' + (selected ? ' selected' : '') + (dimmed ? ' dimmed' : '')
     });
+    if (fillColor) circle.setAttribute('fill', fillColor);
+    if (strokeColor) circle.setAttribute('stroke', strokeColor);
     circle.addEventListener('click', () => {
       storageState.selectedNoteId = note.id;
       renderStorageList();
@@ -1135,6 +1184,7 @@ function renderStorageDetail() {
   const relatedLinks = storageState.links.filter(l => l.source_id === note.id || l.target_id === note.id);
   const relatedEvos = storageState.evolutions.filter(e => e.source_id === note.id || e.target_id === note.id);
   const attachments = getNoteAttachments(note);
+  const clusterId = normalizeClusterId(note.cluster_id) || '';
 
   const targetOptions = storageState.notes
     .filter(n => n.id !== note.id)
@@ -1155,6 +1205,14 @@ function renderStorageDetail() {
       ? '<div class="storage-empty" style="padding:8px 0">No attachments.</div>'
       : attachments.map((a) => `<div class="attachment-row"><a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.label || a.url)}</a></div>`).join('')
     }</div>
+
+    ${uiState.advancedMode ? `
+    <h3 class="storage-section-title">Cluster (Advanced)</h3>
+    <div class="storage-link-form">
+      <input id="sClusterId" class="storage-input" placeholder="cluster id (optional)" value="${escapeHtml(clusterId)}">
+      <button id="sSaveCluster" class="storage-btn primary">Save Cluster</button>
+      <button id="sClearCluster" class="storage-btn">Clear</button>
+    </div>` : ''}
 
     <h3 class="storage-section-title">Links <span style="font-size:11px;font-weight:400;opacity:.7">(${relatedLinks.length})</span></h3>
     <div id="storageLinks"></div>
@@ -1182,6 +1240,20 @@ function renderStorageDetail() {
   document.getElementById('sAddLink').addEventListener('click', () => addStorageLink(note.id));
   document.getElementById('sAddEvo').addEventListener('click', () => addStorageEvolution(note.id));
   document.getElementById('storageDeleteNote').addEventListener('click', () => deleteStorageNote(note.id));
+  if (uiState.advancedMode) {
+    document.getElementById('sSaveCluster').addEventListener('click', async () => {
+      const input = document.getElementById('sClusterId');
+      const nextClusterId = normalizeClusterId(input ? input.value : '');
+      await updateNote(note.id, { cluster_id: nextClusterId });
+      await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+      showStatus('storageStatus', 'Cluster updated.', 'success');
+    });
+    document.getElementById('sClearCluster').addEventListener('click', async () => {
+      await updateNote(note.id, { cluster_id: null });
+      await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+      showStatus('storageStatus', 'Cluster cleared.', 'success');
+    });
+  }
 }
 
 function renderStorageLinks(links, noteId) {
@@ -1293,6 +1365,7 @@ async function renderRoute() {
 }
 
 async function initApp() {
+  loadUiState();
   applyRouteFromQueryFallback();
   try {
     await initDB();
@@ -1303,6 +1376,11 @@ async function initApp() {
   }
 
   window.addEventListener('popstate', () => renderRoute());
+  window.addEventListener('keydown', async (e) => {
+    if (!(e.altKey && e.shiftKey && (e.key === 'A' || e.key === 'a'))) return;
+    setAdvancedMode(!uiState.advancedMode);
+    await renderRoute();
+  });
   window.addEventListener('resize', () => {
     if (getRouteKeyFromLocation() === 'storage') {
       storageState.graphNodes = null;

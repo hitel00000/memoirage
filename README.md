@@ -64,10 +64,16 @@ Storage graph behavior:
 - renders links and evolutions together in the graph
 - uses force-directed positioning and resets cached node positions when data changes
 - uses different edge styles for links vs evolutions
+- supports optional cluster coloring when Advanced mode is enabled
 
 Tag behavior:
 - tags are auto-extracted from note content hashtags (for example: `#ai`, `#daily-log`)
 - list items surface tag chips so query terms are easier to discover
+
+Advanced mode:
+- hidden gate toggle: `Alt+Shift+A`
+- when enabled, Storage detail exposes `cluster_id` edit controls
+- cluster id is stored on notes and reflected in list chip + graph node color
 
 Responsive layout behavior:
 - Processing page switches to stacked layout on narrow screens

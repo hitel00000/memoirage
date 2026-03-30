@@ -110,7 +110,7 @@ Next:
 
 Later:
 - [x] Add attachments model incrementally without breaking offline-first flow
-- [ ] Introduce cluster/membership model behind a hidden/advanced UI gate
+- [x] Introduce cluster/membership model behind a hidden/advanced UI gate
 - [ ] Add optional AI refine/merge path with graceful fallback and no hard dependency
 
 ## Working rule for new features
