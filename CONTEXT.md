@@ -97,6 +97,22 @@ P4 (assistive intelligence):
 - AI refine/merge as optional capability, not a hard dependency
 - keep graceful fallback when model/API is unavailable
 
+## Action checklist
+
+Now:
+- [ ] Improve storage graph readability for larger datasets (layout, overlap, label legibility)
+- [ ] Add service worker update notification UX (new cache available -> prompt to refresh)
+- [ ] Document Firestore optional mode more clearly (setup + limits + when to use)
+
+Next:
+- [ ] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)
+- [ ] Refine data retrieval ergonomics in `db.js` for common filter patterns
+
+Later:
+- [ ] Add attachments model incrementally without breaking offline-first flow
+- [ ] Introduce cluster/membership model behind a hidden/advanced UI gate
+- [ ] Add optional AI refine/merge path with graceful fallback and no hard dependency
+
 ## Working rule for new features
 
 Any new feature should satisfy all three:
