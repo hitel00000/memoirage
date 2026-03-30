@@ -23,11 +23,16 @@ const linkTypeOptions = ['related', 'supports', 'contrasts', 'depends_on', 'dupl
 const routeKeySet = new Set(routes.map((route) => route.key));
 
 function getBasePath() {
-  const path = window.location.pathname;
-  if (path.endsWith('/index.html')) {
-    return path.slice(0, -'/index.html'.length) || '/';
+  const path = normalizePath(window.location.pathname);
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length === 0) return '/';
+
+  const last = segments[segments.length - 1];
+  if (last === 'index.html' || last === '404.html' || routeKeySet.has(last)) {
+    segments.pop();
   }
-  return '/';
+
+  return '/' + (segments.length ? segments.join('/') + '/' : '');
 }
 
 function normalizePath(path) {
@@ -61,7 +66,8 @@ function applyRouteFromQueryFallback() {
   try {
     const decoded = decodeURIComponent(routePathQuery);
     const url = new URL(decoded, window.location.origin);
-    window.history.replaceState({}, '', url.pathname);
+    const target = url.pathname + (url.search || '') + (url.hash || '');
+    window.history.replaceState({}, '', target);
   } catch (error) {
     console.warn('Invalid route query fallback:', error);
   }
