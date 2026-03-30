@@ -86,6 +86,7 @@ Responsive layout behavior:
 
 - Primary entities: `notes`, `links`, `evolutions`
 - Note lifecycle: `inbox` -> `processing` -> `done` -> `deleted` (soft delete)
+- Incremental note extensions in use: `tags`, `attachments`, `cluster_id` (advanced mode)
 - IndexedDB schema version: `2`
 - Migration support: legacy link-type remapping (`v1 -> v2`)
 
@@ -179,18 +180,26 @@ Public API:
 ## Roadmap Priorities
 
 P1 (current focus):
-- Improve graph layout quality for larger note sets
-- Add app update prompt UX for service worker cache updates
+- Stabilize new query/filter flows with real-world datasets
+- Validate attachment/cluster behavior in mobile layouts
 - Keep Firestore mode optional and documented
 
 P2:
-- Improve tag/search ergonomics in UI and `db.js` usage patterns
+- Improve tag lifecycle UX (manual edit/remove, normalization, discoverability)
+- Add attachment/cluster-aware helper retrieval patterns in `db.js`
 
 P3:
-- Add richer attachments and cluster/membership model incrementally
+- Introduce richer attachment metadata (type/source/preview-safe fields)
+- Evolve cluster/membership model progressively from advanced mode
 
 P4:
-- Extend optional AI refine/merge support with richer merge strategies
+- Extend optional AI refine/merge workflows with better merge suggestions
+
+## Current Open Tasks
+
+- Add tag edit/removal controls in note detail (not only hashtag auto-extraction)
+- Add a small in-app hint for query syntax (`#tag`, `status:`)
+- Add basic validation/limits guidance for attachment URL + label input
 
 ## Feature Acceptance Rule
 
