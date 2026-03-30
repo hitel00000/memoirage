@@ -50,6 +50,8 @@ Routing/hosting behavior:
 - `404.html` recovers static-host deep links via `?route=`
 - route entry pages (`capture/`, `processing/`, `storage/`) redirect into SPA shell
 - base path normalization supports root + subpath deployments
+- hidden advanced mode toggle: `Alt+Shift+A` (persisted in localStorage)
+- optional host AI hook: `window.memoirageAI.refine(content)` with local fallback when unavailable
 
 ## Domain model (current)
 
@@ -62,6 +64,11 @@ Status lifecycle:
 - `inbox` -> `processing` -> `done`
 - soft delete: `deleted` with `deleted_at`
 
+Incremental note extensions now in use:
+- `tags` (auto-extracted from `#hashtag` in content and used for list filtering)
+- `attachments` (optional URL list stored in note payload)
+- `cluster_id` (optional advanced grouping field; hidden UI by default)
+
 Current IndexedDB details:
 - schema version: `2`
 - migration `v1 -> v2`: legacy link type normalization
@@ -73,6 +80,9 @@ In-scope now:
 - relationship editing (links + evolutions)
 - graph readability and usability
 - PWA stability and update UX
+- fast query/filter UX in processing/storage lists (`text`, `#tag`, `status:`)
+- incremental attachment + cluster support without backend dependency
+- optional AI refine path with graceful local fallback
 
 Out-of-scope for now (deferred):
 - backend REST server resurrection
@@ -81,37 +91,36 @@ Out-of-scope for now (deferred):
 ## Roadmap by priority
 
 P1 (stabilize current core):
-- improve graph readability for larger datasets
-- add app update notification UX for new service worker cache versions
+- stabilize new query/filter flows with real-world datasets
+- validate attachment/cluster behavior in mobile layouts
 - keep Firestore mode optional and documented
 
 P2 (light model expansion):
-- strengthen tag/search workflow (still local-first)
-- tighten filtering and retrieval ergonomics in `db.js` and UI
+- improve tag lifecycle UX (manual edit/remove, normalization, discoverability)
+- tighten retrieval ergonomics around attachments/clusters in `db.js`
 
 P3 (advanced structure):
-- attachments model
-- cluster/membership model (hidden by default, progressive exposure)
+- richer attachment model (type metadata, previews, safer URL handling)
+- cluster/membership evolution (progressive exposure from hidden mode)
 
 P4 (assistive intelligence):
-- AI refine/merge as optional capability, not a hard dependency
+- richer optional AI refine/merge workflows
 - keep graceful fallback when model/API is unavailable
 
 ## Action checklist
 
 Now:
-- [x] Improve storage graph readability for larger datasets (layout, overlap, label legibility)
-- [x] Add service worker update notification UX (new cache available -> prompt to refresh)
-- [x] Document Firestore optional mode more clearly (setup + limits + when to use)
+- [ ] Add tag edit/removal controls in note detail (not only auto-extraction)
+- [ ] Add small onboarding hint for query syntax (`#tag`, `status:`) in list UIs
+- [ ] Add basic validation/limits UI for attachment URL + label input
 
 Next:
-- [x] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)
-- [x] Refine data retrieval ergonomics in `db.js` for common filter patterns
+- [ ] Add `attachments_count` / `cluster_id`-aware helper retrieval patterns in `db.js`
+- [ ] Add advanced-mode discoverability hint without exposing by default
 
 Later:
-- [x] Add attachments model incrementally without breaking offline-first flow
-- [x] Introduce cluster/membership model behind a hidden/advanced UI gate
-- [x] Add optional AI refine/merge path with graceful fallback and no hard dependency
+- [ ] Introduce richer attachment metadata (kind, source, optional preview text)
+- [ ] Expand optional AI flow from refine-only to refine+merge suggestions
 
 ## Working rule for new features
 
