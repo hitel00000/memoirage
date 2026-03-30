@@ -1,4 +1,4 @@
-﻿# Memoirage Context Snapshot (2026-03-27)
+# Memoirage Context Snapshot (2026-03-30)
 
 ## Product stance
 
@@ -17,6 +17,7 @@ Memoirage uses a single-page app shell:
 Routing model:
 - History API routes: `/`, `/capture`, `/processing`, `/storage`
 - `404.html` provides static-host fallback and route recovery via `?route=`
+- `app.js` normalizes base path from current URL so routing works in root and GitHub Pages subpath deployments
 - route entry pages (`capture/`, `processing/`, `storage/`) redirect into SPA shell for local static servers
 
 ## Repository layout
@@ -56,17 +57,19 @@ memoirage/
 - prepare/delete links before done state
 - move to `done`
 - soft delete notes
+- responsive layout stacks list/detail sections on narrow screens
 
 4. Storage (`/storage`)
 - list done notes
 - SVG graph rendering of note links
 - add links with relation dropdown + note text search
 - delete links and notes
+- responsive layout switches from 3-column desktop grid to stacked mobile sections
 
 ## PWA alignment
 
 - `manifest.json` is configured for SPA start (`./`)
-- `sw.js` precaches SPA files and fallback page
+- `sw.js` precaches SPA files and fallback page (cache name: `memoirage-static-v8`)
 - app registers service worker from `app.js`
 
 ## Current priorities

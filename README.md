@@ -1,4 +1,4 @@
-﻿# Memoirage
+# Memoirage
 
 Memoirage is an offline-first PWA for capturing and organizing personal notes.
 The app runs as a single-page application (SPA) with History API routing.
@@ -16,10 +16,11 @@ The app runs as a single-page application (SPA) with History API routing.
 - `/capture` -> Capture
 - `/processing` -> Processing Queue
 - `/storage` -> Storage
+- GitHub Pages subpath example: `/<repo-name>/capture/`
 
 Static-host fallback:
 - `404.html` redirects unknown paths to `index.html?route=...`
-- `app.js` restores the route from query and renders the correct screen
+- `app.js` restores route from query and normalizes base path for both root and subpath deployments
 - `capture/`, `processing/`, `storage/` route entry pages redirect to SPA shell (for simple static servers like `python -m http.server`)
 
 Processing behavior:
@@ -33,6 +34,10 @@ Processing behavior:
 Storage link behavior:
 - relation type is selected via dropdown
 - target note is searched with text input (datalist suggestions)
+
+Responsive layout behavior:
+- Processing page switches to stacked layout on narrow screens
+- Storage page switches from 3-column desktop grid to stacked mobile sections (list -> graph -> detail)
 
 ## Repository Layout
 
@@ -85,7 +90,7 @@ Public API:
 ## PWA / Offline
 
 - `manifest.json` uses relative URLs
-- `sw.js` precaches SPA assets and fallback page
+- `sw.js` precaches SPA assets and fallback page (`memoirage-static-v8`)
 - Service worker is registered by `app.js`
 
 ## GitHub Pages
