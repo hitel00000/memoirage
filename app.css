@@ -1036,3 +1036,39 @@ textarea {
         flex: 1 1 100%;
     }
 }
+
+/* ── NoteEvolution 스타일 ── */
+
+.evo-edge {
+  stroke: #9b7ec8;
+  stroke-width: 1.4;
+  opacity: 0.85;
+}
+
+.evo-label {
+  fill: #9b7ec8;
+}
+
+.evo-row {
+  border-color: #e5d9f5;
+  background: color-mix(in srgb, #f3eaff 60%, var(--surface) 40%);
+}
+
+.evo-type {
+  background: #7c3aed;
+  color: #fff;
+}
+
+.evo-type.extends  { background: #0f6e56; }
+.evo-type.shrinks  { background: #854f0b; }
+.evo-type.decay    { background: #6b3a3a; }
+
+@media (prefers-color-scheme: dark) {
+  .evo-row {
+    border-color: #4a3560;
+    background: color-mix(in srgb, #2e1e4a 60%, var(--surface) 40%);
+  }
+  .evo-type.extends  { background: #085041; }
+  .evo-type.shrinks  { background: #633806; }
+  .evo-type.decay    { background: #4a2222; }
+}

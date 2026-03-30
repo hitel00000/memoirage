@@ -1,4 +1,4 @@
-﻿const routes = [
+const routes = [
   { key: 'home', label: 'Home' },
   { key: 'capture', label: 'Capture' },
   { key: 'processing', label: 'Processing' },
@@ -7,37 +7,43 @@
 
 let deferredPrompt = null;
 let statsIntervalId = null;
+
 const processingState = {
   notes: [],
   selectedIndex: -1,
   allNotes: [],
-  links: []
+  links: [],
+  evolutions: []
 };
+
 const storageState = {
   notes: [],
   links: [],
-  selectedNoteId: null
+  evolutions: [],
+  selectedNoteId: null,
+  graphNodes: null  // force-directed 위치 캐시
 };
-const linkTypeOptions = ['related', 'supports', 'contrasts', 'depends_on', 'duplicates'];
 
-const routeKeySet = new Set(routes.map((route) => route.key));
+// 설계 원칙대로 통일된 link type
+const LINK_TYPE_OPTIONS = ['derive', 'contradict', 'support', 'related'];
+const EVOLUTION_TYPE_OPTIONS = ['extends', 'shrinks', 'decay'];
+
+const routeKeySet = new Set(routes.map((r) => r.key));
+
+// ── 라우팅 ──
 
 function getBasePath() {
   const path = normalizePath(window.location.pathname);
   const segments = path.split('/').filter(Boolean);
   if (segments.length === 0) return '/';
-
   const last = segments[segments.length - 1];
-  if (last === 'index.html' || last === '404.html' || routeKeySet.has(last)) {
-    segments.pop();
-  }
-
+  if (last === 'index.html' || last === '404.html' || routeKeySet.has(last)) segments.pop();
   return '/' + (segments.length ? segments.join('/') + '/' : '');
 }
 
 function normalizePath(path) {
-  const withLeadingSlash = path.startsWith('/') ? path : '/' + path;
-  return withLeadingSlash.replace(/\/+$/, '') || '/';
+  const p = path.startsWith('/') ? path : '/' + path;
+  return p.replace(/\/+$/, '') || '/';
 }
 
 function routePath(key) {
@@ -52,7 +58,6 @@ function getRouteKeyFromLocation() {
   const current = normalizePath(window.location.pathname);
   const relative = current.startsWith(base) ? current.slice(base.length) : current;
   const clean = relative.replace(/^\/+/, '');
-
   if (!clean || clean === 'index.html') return 'home';
   if (routeKeySet.has(clean)) return clean;
   return 'home';
@@ -62,35 +67,78 @@ function applyRouteFromQueryFallback() {
   const params = new URLSearchParams(window.location.search);
   const routePathQuery = params.get('route');
   if (!routePathQuery) return;
-
   try {
     const decoded = decodeURIComponent(routePathQuery);
     const url = new URL(decoded, window.location.origin);
-    const target = url.pathname + (url.search || '') + (url.hash || '');
-    window.history.replaceState({}, '', target);
-  } catch (error) {
-    console.warn('Invalid route query fallback:', error);
+    window.history.replaceState({}, '', url.pathname + (url.search || '') + (url.hash || ''));
+  } catch (e) {
+    console.warn('Invalid route query fallback:', e);
   }
 }
 
 function navigateToRoute(routeKey, replace = false) {
-  const method = replace ? 'replaceState' : 'pushState';
-  window.history[method]({}, '', routePath(routeKey));
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', routePath(routeKey));
   renderRoute();
 }
+
+function bindRouteLinks(scope) {
+  scope.querySelectorAll('a[data-route]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      navigateToRoute(a.dataset.route || 'home');
+    });
+  });
+}
+
+// ── 공통 유틸 ──
+
+function generateId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function escapeHtml(input) {
+  return String(input || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function trimText(text, max = 42) {
+  if (!text) return '(No content)';
+  return text.length > max ? text.slice(0, max) + '…' : text;
+}
+
+function createSvgEl(tag, attrs = {}) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
+  return el;
+}
+
+function showStatus(elId, message, type, duration = 2500) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = message;
+  el.className = el.className.replace(/\bshow\b|\bsuccess\b|\berror\b/g, '').trim() + ` show ${type}`;
+  setTimeout(() => { el.className = el.className.replace(/\bshow\b|\bsuccess\b|\berror\b/g, '').trim(); }, duration);
+}
+
+// ── NAV ──
 
 function renderNav(activeKey) {
   const nav = document.getElementById('app-nav');
   nav.innerHTML = `
     <nav class="spa-nav">
       <ul>
-        ${routes.map((route) => `<li><a href="${routePath(route.key)}" data-route="${route.key}" class="${route.key === activeKey ? 'active' : ''}">${route.label}</a></li>`).join('')}
+        ${routes.map((r) => `<li><a href="${routePath(r.key)}" data-route="${r.key}" class="${r.key === activeKey ? 'active' : ''}">${r.label}</a></li>`).join('')}
       </ul>
-    </nav>
-  `;
-
+    </nav>`;
   bindRouteLinks(nav);
 }
+
+// ── HOME ──
 
 function renderHome() {
   const root = document.getElementById('app-root');
@@ -98,49 +146,24 @@ function renderHome() {
     <div class="container">
       <h1>Memoirage</h1>
       <p class="subtitle">Capture fleeting thoughts and connect them later.</p>
-
       <div class="menu">
-        <a href="${routePath('capture')}" data-route="capture" class="menu-item">
-          <h3>Capture</h3>
-          <p>Save ideas quickly as inbox notes.</p>
-        </a>
-        <a href="${routePath('processing')}" data-route="processing" class="menu-item">
-          <h3>Processing</h3>
-          <p>Review inbox notes and move them forward.</p>
-        </a>
-        <a href="${routePath('storage')}" data-route="storage" class="menu-item">
-          <h3>Storage</h3>
-          <p>Browse done notes and manage links.</p>
-        </a>
+        <a href="${routePath('capture')}" data-route="capture" class="menu-item"><h3>Capture</h3><p>Save ideas quickly as inbox notes.</p></a>
+        <a href="${routePath('processing')}" data-route="processing" class="menu-item"><h3>Processing</h3><p>Review inbox notes and move them forward.</p></a>
+        <a href="${routePath('storage')}" data-route="storage" class="menu-item"><h3>Storage</h3><p>Browse done notes and manage connections.</p></a>
       </div>
-
       <div class="status">
         <h4>Workspace Status</h4>
-        <div id="stats" class="stats">
-          <div class="stat">
-            <div class="number" id="inboxCount">-</div>
-            <div class="label">Inbox</div>
-          </div>
-          <div class="stat">
-            <div class="number" id="doneCount">-</div>
-            <div class="label">Done</div>
-          </div>
-          <div class="stat">
-            <div class="number" id="totalCount">-</div>
-            <div class="label">Total</div>
-          </div>
+        <div class="stats">
+          <div class="stat"><div class="number" id="inboxCount">-</div><div class="label">Inbox</div></div>
+          <div class="stat"><div class="number" id="doneCount">-</div><div class="label">Done</div></div>
+          <div class="stat"><div class="number" id="totalCount">-</div><div class="label">Total</div></div>
         </div>
       </div>
-
       <button id="installBtn" class="install-btn">Install App</button>
-    </div>
-  `;
+    </div>`;
 
   const installBtn = document.getElementById('installBtn');
-  if (deferredPrompt) {
-    installBtn.style.display = 'inline-block';
-  }
-
+  if (deferredPrompt) installBtn.style.display = 'inline-block';
   installBtn.addEventListener('click', async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
@@ -148,150 +171,84 @@ function renderHome() {
     deferredPrompt = null;
     installBtn.style.display = 'none';
   });
-
   bindRouteLinks(root);
 }
 
-function renderPlaceholder(title) {
-  const root = document.getElementById('app-root');
-  root.innerHTML = `
-    <section class="placeholder">
-      <h2>${title}</h2>
-      <p>This route will be migrated from the existing page in the next step.</p>
-    </section>
-  `;
+async function loadHomeStats() {
+  const inboxEl = document.getElementById('inboxCount');
+  if (!inboxEl) return;
+  try {
+    const [inbox, done, total] = await Promise.all([
+      getNotes({ status: 'inbox', include_deleted: false }),
+      getNotes({ status: 'done', include_deleted: false }),
+      getNotes({ include_deleted: false })
+    ]);
+    document.getElementById('inboxCount').textContent = inbox.length;
+    document.getElementById('doneCount').textContent = done.length;
+    document.getElementById('totalCount').textContent = total.length;
+  } catch (e) { console.error('Failed to load stats:', e); }
 }
 
-function generateId() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
-    const random = Math.random() * 16 | 0;
-    const value = char === 'x' ? random : (random & 0x3 | 0x8);
-    return value.toString(16);
-  });
-}
-
-function escapeHtml(input) {
-  return String(input || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// ── CAPTURE ──
 
 function renderCapture() {
   const root = document.getElementById('app-root');
   root.innerHTML = `
     <section class="capture-card">
       <h2>Quick Capture</h2>
-      <textarea id="captureContent" placeholder="Write anything..."></textarea>
+      <textarea id="captureContent" placeholder="Write anything…"></textarea>
       <button id="captureSubmit">Save</button>
       <div id="captureStatus" class="capture-status"></div>
-    </section>
-  `;
+    </section>`;
 
-  const submitButton = document.getElementById('captureSubmit');
-  submitButton.addEventListener('click', async () => {
+  document.getElementById('captureSubmit').addEventListener('click', async () => {
     const textarea = document.getElementById('captureContent');
-    const statusEl = document.getElementById('captureStatus');
     const content = textarea.value.trim();
+    if (!content) { showStatus('captureStatus', 'Please enter content', 'error'); return; }
 
-    if (!content) {
-      showCaptureStatus(statusEl, 'Please enter content', 'error');
-      return;
-    }
-
-    submitButton.disabled = true;
-    submitButton.textContent = 'Saving...';
-
+    const btn = document.getElementById('captureSubmit');
+    btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      await saveNote({
-        id: generateId(),
-        type: 'text',
-        content,
-        status: 'inbox',
-        tags: [],
-        created_at: new Date().toISOString(),
-        deleted_at: null
-      });
-
+      await saveNote({ id: generateId(), type: 'text', content, status: 'inbox', tags: [], created_at: new Date().toISOString(), deleted_at: null });
       textarea.value = '';
-      showCaptureStatus(statusEl, 'Saved!', 'success');
-    } catch (error) {
-      console.error('Save failed:', error);
-      showCaptureStatus(statusEl, 'Save failed: ' + error.message, 'error');
+      showStatus('captureStatus', 'Saved!', 'success');
+    } catch (e) {
+      showStatus('captureStatus', 'Save failed: ' + e.message, 'error');
     } finally {
-      submitButton.disabled = false;
-      submitButton.textContent = 'Save';
+      btn.disabled = false; btn.textContent = 'Save';
     }
   });
 }
 
-function showCaptureStatus(element, message, type) {
-  element.textContent = message;
-  element.className = 'capture-status show ' + type;
-  setTimeout(() => {
-    element.className = 'capture-status';
-  }, 2500);
-}
+// ── PROCESSING ──
 
 async function loadProcessingNotes() {
-  const [inboxNotes, processingNotes, allNotes, allLinks] = await Promise.all([
+  const [inbox, processing, allNotes, links, evolutions] = await Promise.all([
     getNotes({ status: 'inbox', include_deleted: false }),
     getNotes({ status: 'processing', include_deleted: false }),
     getNotes({ include_deleted: false }),
-    getLinks({})
+    getLinks({}),
+    getEvolutions({})
   ]);
-
-  processingState.notes = [...processingNotes, ...inboxNotes].sort(
-    (a, b) => new Date(b.created_at) - new Date(a.created_at)
-  );
+  processingState.notes = [...processing, ...inbox].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   processingState.allNotes = allNotes;
-  processingState.links = allLinks;
+  processingState.links = links;
+  processingState.evolutions = evolutions;
 }
 
 async function reloadProcessingAndSelect(noteId = null) {
   await loadProcessingNotes();
-
   if (noteId) {
-    processingState.selectedIndex = processingState.notes.findIndex((note) => note.id === noteId);
+    processingState.selectedIndex = processingState.notes.findIndex((n) => n.id === noteId);
   } else if (processingState.selectedIndex >= processingState.notes.length) {
     processingState.selectedIndex = -1;
   }
-
   renderProcessingList();
   renderProcessingDetail();
 }
 
-function getProcessingNoteById(noteId) {
-  return processingState.allNotes.find((note) => note.id === noteId) || null;
-}
-
-function getProcessingRelatedLinks(noteId) {
-  return processingState.links.filter((link) => link.source_id === noteId || link.target_id === noteId);
-}
-
-function getProcessingTargetCandidates(noteId) {
-  return processingState.allNotes
-    .filter((note) => note.id !== noteId)
-    .map((note) => ({
-      id: note.id,
-      content: note.content || '(No content)',
-      display: trimText(note.content || '(No content)', 64)
-    }));
-}
-
-function findProcessingTargetByQuery(noteId, query) {
-  const normalized = (query || '').trim().toLowerCase();
-  if (!normalized) return null;
-
-  const candidates = getProcessingTargetCandidates(noteId);
-  const exact = candidates.find((item) => item.id === query || item.display.toLowerCase() === normalized);
-  if (exact) return exact;
-
-  const includes = candidates.filter((item) => item.content.toLowerCase().includes(normalized));
-  if (includes.length === 1) return includes[0];
-  return null;
+function getNoteById_processing(id) {
+  return processingState.allNotes.find((n) => n.id === id) || null;
 }
 
 function renderProcessing() {
@@ -302,72 +259,269 @@ function renderProcessing() {
       <section id="processingDetail" class="processing-detail">
         <div class="processing-legend">
           <p><strong>Inbox</strong>: quick captures waiting for first review.</p>
-          <p><strong>Processing</strong>: notes you're actively refining, linking, and preparing for Done.</p>
+          <p><strong>Processing</strong>: notes you're actively refining and connecting.</p>
         </div>
-        <p>Select a note...</p>
+        <p>Select a note…</p>
       </section>
-    </div>
-  `;
-
+    </div>`;
   renderProcessingList();
   renderProcessingDetail();
 }
 
-async function loadStorageData() {
-  const doneNotes = await getNotes({ status: 'done', include_deleted: false });
-  const allLinks = await getLinks({});
+function renderProcessingList() {
+  const panel = document.getElementById('processingList');
+  if (!panel) return;
+  if (processingState.notes.length === 0) {
+    panel.innerHTML = '<div style="padding:20px;color:#999;">No notes</div>';
+    return;
+  }
+  panel.innerHTML = processingState.notes.map((note, idx) => {
+    const sel = idx === processingState.selectedIndex ? ' selected' : '';
+    return `
+      <div class="processing-item${sel}">
+        <div class="processing-item-content" data-action="select" data-idx="${idx}">
+          <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
+          <div class="processing-item-meta">
+            <span class="processing-status-chip ${escapeHtml(note.status || 'inbox')}">${note.status === 'processing' ? 'Processing' : 'Inbox'}</span>
+            <span class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</span>
+          </div>
+        </div>
+        <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">×</button>
+      </div>`;
+  }).join('');
 
+  panel.querySelectorAll('[data-action="select"]').forEach((el) => {
+    el.addEventListener('click', () => {
+      processingState.selectedIndex = Number(el.dataset.idx);
+      renderProcessingList();
+      renderProcessingDetail();
+    });
+  });
+  panel.querySelectorAll('[data-action="delete"]').forEach((el) => {
+    el.addEventListener('click', async (e) => { e.stopPropagation(); await deleteProcessingNote(el.dataset.id); });
+  });
+}
+
+function renderProcessingDetail() {
+  const panel = document.getElementById('processingDetail');
+  if (!panel) return;
+  const selected = processingState.notes[processingState.selectedIndex];
+  if (!selected) {
+    panel.innerHTML = `
+      <div class="processing-legend">
+        <p><strong>Inbox</strong>: quick captures waiting for first review.</p>
+        <p><strong>Processing</strong>: notes you're actively refining and connecting.</p>
+      </div>
+      <p>Select a note…</p>`;
+    return;
+  }
+
+  const status = selected.status || 'inbox';
+  const toggleTarget = status === 'processing' ? 'inbox' : 'processing';
+  const toggleLabel = status === 'processing' ? 'Move back to Inbox' : 'Start Processing';
+  const relatedLinks = processingState.links.filter(l => l.source_id === selected.id || l.target_id === selected.id);
+  const relatedEvos = processingState.evolutions.filter(e => e.source_id === selected.id || e.target_id === selected.id);
+
+  const targetOptions = processingState.allNotes
+    .filter(n => n.id !== selected.id)
+    .map(n => `<option value="${escapeHtml(trimText(n.content, 64))}"></option>`)
+    .join('');
+
+  const linkTypeHtml = LINK_TYPE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('');
+  const evoTypeHtml = EVOLUTION_TYPE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  panel.innerHTML = `
+    <div id="processingStatus" class="processing-status"></div>
+    <h2 style="margin-top:0">Note</h2>
+    <p><small>Created: ${escapeHtml(new Date(selected.created_at).toLocaleString())}</small></p>
+    <p><small>Status: <strong>${status === 'processing' ? 'Processing' : 'Inbox'}</strong></small></p>
+    <label for="processingContent"><small>Content</small></label>
+    <textarea id="processingContent" class="processing-content-input">${escapeHtml(selected.content || '')}</textarea>
+    <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
+    <div class="processing-btn-row">
+      <button class="processing-btn primary" id="toggleProcessingBtn">${escapeHtml(toggleLabel)}</button>
+      <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
+    </div>
+
+    <h3 class="storage-section-title">Add Link <span style="font-size:11px;font-weight:400;opacity:.7">(개념 간 관계)</span></h3>
+    <div class="storage-link-form">
+      <input id="pLinkTarget" list="pLinkTargetList" class="storage-input" placeholder="Search note…">
+      <datalist id="pLinkTargetList">${targetOptions}</datalist>
+      <select id="pLinkType" class="storage-select">${linkTypeHtml}</select>
+      <button id="pAddLinkBtn" class="storage-btn primary">Add</button>
+    </div>
+    <div id="processingLinks"></div>
+
+    <h3 class="storage-section-title">Add Evolution <span style="font-size:11px;font-weight:400;opacity:.7">(시간적 변화)</span></h3>
+    <div class="storage-link-form">
+      <input id="pEvoTarget" list="pEvoTargetList" class="storage-input" placeholder="Search note…">
+      <datalist id="pEvoTargetList">${targetOptions}</datalist>
+      <select id="pEvoType" class="storage-select">${evoTypeHtml}</select>
+      <button id="pAddEvoBtn" class="storage-btn primary">Add</button>
+    </div>
+    <div id="processingEvolutions"></div>
+
+    <button class="processing-btn danger" id="deleteNoteBtn">Delete Note</button>`;
+
+  renderProcessingLinks(relatedLinks, selected.id);
+  renderProcessingEvolutions(relatedEvos, selected.id);
+
+  document.getElementById('saveProcessingNoteBtn').addEventListener('click', async () => {
+    const content = document.getElementById('processingContent').value.trim();
+    if (!content) { showStatus('processingStatus', 'Content cannot be empty.', 'error'); return; }
+    try {
+      await updateNote(selected.id, { content });
+      await reloadProcessingAndSelect(selected.id);
+      showStatus('processingStatus', 'Saved.', 'success');
+    } catch (e) { showStatus('processingStatus', 'Save failed: ' + e.message, 'error'); }
+  });
+
+  document.getElementById('toggleProcessingBtn').addEventListener('click', async () => {
+    try {
+      await updateNote(selected.id, { status: toggleTarget });
+      await reloadProcessingAndSelect(selected.id);
+    } catch (e) { showStatus('processingStatus', 'Update failed.', 'error'); }
+  });
+
+  document.getElementById('moveDoneBtn').addEventListener('click', async () => {
+    try {
+      await updateNote(selected.id, { status: 'done' });
+      await reloadProcessingAndSelect();
+      showStatus('processingStatus', 'Moved to Done.', 'success');
+    } catch (e) { showStatus('processingStatus', 'Update failed.', 'error'); }
+  });
+
+  document.getElementById('deleteNoteBtn').addEventListener('click', async () => {
+    await deleteProcessingNote(selected.id);
+  });
+
+  document.getElementById('pAddLinkBtn').addEventListener('click', async () => {
+    await addProcessingLink(selected.id);
+  });
+
+  document.getElementById('pAddEvoBtn').addEventListener('click', async () => {
+    await addProcessingEvolution(selected.id);
+  });
+}
+
+function renderProcessingLinks(links, noteId) {
+  const container = document.getElementById('processingLinks');
+  if (!container) return;
+  if (links.length === 0) { container.innerHTML = '<div class="storage-empty" style="padding:8px 0">No links yet.</div>'; return; }
+  container.innerHTML = links.map((link) => {
+    const out = link.source_id === noteId;
+    const otherId = out ? link.target_id : link.source_id;
+    const other = getNoteById_processing(otherId);
+    const dir = out ? '→' : '←';
+    return `
+      <div class="storage-link-row">
+        <div class="storage-link-head">
+          <span class="storage-link-type">${escapeHtml(link.type || 'related')}</span>
+          <button class="storage-link-remove" data-id="${link.id}">Delete</button>
+        </div>
+        <div>${dir} ${escapeHtml(trimText(other ? other.content : '(Deleted)', 48))}</div>
+      </div>`;
+  }).join('');
+  container.querySelectorAll('.storage-link-remove').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await deleteLink(btn.dataset.id);
+      await reloadProcessingAndSelect(noteId);
+    });
+  });
+}
+
+function renderProcessingEvolutions(evos, noteId) {
+  const container = document.getElementById('processingEvolutions');
+  if (!container) return;
+  if (evos.length === 0) { container.innerHTML = '<div class="storage-empty" style="padding:8px 0">No evolutions yet.</div>'; return; }
+  container.innerHTML = evos.map((evo) => {
+    const out = evo.source_id === noteId;
+    const otherId = out ? evo.target_id : evo.source_id;
+    const other = getNoteById_processing(otherId);
+    const dir = out ? '→' : '←';
+    return `
+      <div class="storage-link-row evo-row">
+        <div class="storage-link-head">
+          <span class="storage-link-type evo-type ${escapeHtml(evo.evolution_type)}">${escapeHtml(evo.evolution_type)}</span>
+          <button class="storage-link-remove" data-id="${evo.id}">Delete</button>
+        </div>
+        <div>${dir} ${escapeHtml(trimText(other ? other.content : '(Deleted)', 48))}</div>
+      </div>`;
+  }).join('');
+  container.querySelectorAll('.storage-link-remove').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await deleteEvolution(btn.dataset.id);
+      await reloadProcessingAndSelect(noteId);
+    });
+  });
+}
+
+function findNoteByQuery(noteId, query, noteList) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return null;
+  const candidates = noteList.filter(n => n.id !== noteId);
+  const exact = candidates.find(n => n.id === query || trimText(n.content, 64).toLowerCase() === q);
+  if (exact) return exact;
+  const matches = candidates.filter(n => n.content && n.content.toLowerCase().includes(q));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+async function addProcessingLink(noteId) {
+  const targetQuery = document.getElementById('pLinkTarget').value.trim();
+  const linkType = document.getElementById('pLinkType').value || 'related';
+  const target = findNoteByQuery(noteId, targetQuery, processingState.allNotes);
+  if (!target) { showStatus('processingStatus', 'Target not found. Be more specific.', 'error'); return; }
+  const dup = processingState.links.find(l => l.source_id === noteId && l.target_id === target.id && l.type === linkType);
+  if (dup) { showStatus('processingStatus', 'Same link already exists.', 'error'); return; }
+  try {
+    await saveLink({ id: generateId(), source_id: noteId, target_id: target.id, type: linkType, created_at: new Date().toISOString() });
+    await reloadProcessingAndSelect(noteId);
+    showStatus('processingStatus', 'Link added.', 'success');
+  } catch (e) { showStatus('processingStatus', 'Failed: ' + e.message, 'error'); }
+}
+
+async function addProcessingEvolution(noteId) {
+  const targetQuery = document.getElementById('pEvoTarget').value.trim();
+  const evoType = document.getElementById('pEvoType').value || 'extends';
+  const target = findNoteByQuery(noteId, targetQuery, processingState.allNotes);
+  if (!target) { showStatus('processingStatus', 'Target not found. Be more specific.', 'error'); return; }
+  const dup = processingState.evolutions.find(e => e.source_id === noteId && e.target_id === target.id && e.evolution_type === evoType);
+  if (dup) { showStatus('processingStatus', 'Same evolution already exists.', 'error'); return; }
+  try {
+    await saveEvolution({ id: generateId(), source_id: noteId, target_id: target.id, evolution_type: evoType, evolved_at: new Date().toISOString() });
+    await reloadProcessingAndSelect(noteId);
+    showStatus('processingStatus', 'Evolution added.', 'success');
+  } catch (e) { showStatus('processingStatus', 'Failed: ' + e.message, 'error'); }
+}
+
+async function deleteProcessingNote(noteId) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    await deleteNote(noteId);
+    processingState.selectedIndex = -1;
+    await reloadProcessingAndSelect();
+  } catch (e) { showStatus('processingStatus', 'Delete failed.', 'error'); }
+}
+
+// ── STORAGE ──
+
+async function loadStorageData() {
+  const [doneNotes, allLinks, allEvos] = await Promise.all([
+    getNotes({ status: 'done', include_deleted: false }),
+    getLinks({}),
+    getEvolutions({})
+  ]);
   doneNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   storageState.notes = doneNotes;
 
-  const doneIds = new Set(doneNotes.map((note) => note.id));
-  storageState.links = allLinks.filter((link) => doneIds.has(link.source_id) && doneIds.has(link.target_id));
+  const doneIds = new Set(doneNotes.map(n => n.id));
+  storageState.links = allLinks.filter(l => doneIds.has(l.source_id) && doneIds.has(l.target_id));
+  storageState.evolutions = allEvos.filter(e => doneIds.has(e.source_id) && doneIds.has(e.target_id));
 
   if (storageState.selectedNoteId && !doneIds.has(storageState.selectedNoteId)) {
     storageState.selectedNoteId = null;
   }
-}
-
-function getStorageNoteById(id) {
-  return storageState.notes.find((note) => note.id === id) || null;
-}
-
-function getStorageRelatedLinks(noteId) {
-  return storageState.links.filter((link) => link.source_id === noteId || link.target_id === noteId);
-}
-
-function getStorageTargetCandidates(noteId) {
-  return storageState.notes
-    .filter((item) => item.id !== noteId)
-    .map((item) => ({
-      id: item.id,
-      content: item.content || '(No content)',
-      display: trimText(item.content || '(No content)', 64)
-    }));
-}
-
-function findStorageTargetByQuery(noteId, query) {
-  const normalized = (query || '').trim().toLowerCase();
-  if (!normalized) return null;
-
-  const candidates = getStorageTargetCandidates(noteId);
-  const exact = candidates.find((item) => item.id === query || item.display.toLowerCase() === normalized);
-  if (exact) return exact;
-
-  const includes = candidates.filter((item) => item.content.toLowerCase().includes(normalized));
-  if (includes.length === 1) return includes[0];
-  return null;
-}
-
-function trimText(text, max = 42) {
-  if (!text) return '(No content)';
-  return text.length > max ? text.slice(0, max) + '...' : text;
-}
-
-function getNoteStatusLabel(status) {
-  if (status === 'processing') return 'Processing';
-  if (status === 'done') return 'Done';
-  return 'Inbox';
+  storageState.graphNodes = null; // 데이터 바뀌면 위치 초기화
 }
 
 function renderStorage() {
@@ -385,9 +539,7 @@ function renderStorage() {
         <div id="storageStatus" class="storage-status"></div>
         <div id="storageDetail" class="storage-empty">Select a note from the list or graph.</div>
       </aside>
-    </div>
-  `;
-
+    </div>`;
   renderStorageList();
   renderStorageGraph();
   renderStorageDetail();
@@ -396,21 +548,15 @@ function renderStorage() {
 function renderStorageList() {
   const panel = document.getElementById('storageList');
   if (!panel) return;
-
   if (storageState.notes.length === 0) {
     panel.innerHTML = '<div class="storage-empty">No completed notes yet.</div>';
     return;
   }
-
-  panel.innerHTML = storageState.notes.map((note) => {
-    const selectedClass = note.id === storageState.selectedNoteId ? ' selected' : '';
-    return `
-      <div class="storage-note-item${selectedClass}" data-id="${note.id}">
-        <div class="storage-note-content">${escapeHtml(trimText(note.content))}</div>
-        <div class="storage-note-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
-      </div>
-    `;
-  }).join('');
+  panel.innerHTML = storageState.notes.map((note) => `
+    <div class="storage-note-item${note.id === storageState.selectedNoteId ? ' selected' : ''}" data-id="${note.id}">
+      <div class="storage-note-content">${escapeHtml(trimText(note.content))}</div>
+      <div class="storage-note-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
+    </div>`).join('');
 
   panel.querySelectorAll('.storage-note-item').forEach((item) => {
     item.addEventListener('click', () => {
@@ -422,36 +568,84 @@ function renderStorageList() {
   });
 }
 
-function computeStoragePositions(width, height) {
-  const padding = 56;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.max(40, Math.min(width, height) / 2 - padding);
-  const positions = new Map();
+// ── force-directed 그래프 ──
 
-  storageState.notes.forEach((note, index) => {
-    const angle = (Math.PI * 2 * index) / storageState.notes.length;
-    const jitter = (index % 3) * 10;
-    positions.set(note.id, {
-      x: centerX + Math.cos(angle) * (radius - jitter),
-      y: centerY + Math.sin(angle) * (radius - jitter)
-    });
+function initGraphPositions(width, height) {
+  if (storageState.graphNodes) return storageState.graphNodes;
+  const nodes = {};
+  const cx = width / 2, cy = height / 2;
+  const r = Math.min(width, height) * 0.35;
+  storageState.notes.forEach((note, i) => {
+    const angle = (Math.PI * 2 * i) / storageState.notes.length;
+    nodes[note.id] = {
+      x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 20,
+      y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 20,
+      vx: 0, vy: 0
+    };
   });
-
-  return positions;
+  storageState.graphNodes = nodes;
+  return nodes;
 }
 
-function createSvgEl(tag, attrs = {}) {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-  Object.keys(attrs).forEach((key) => el.setAttribute(key, attrs[key]));
-  return el;
+function runForceLayout(nodes, width, height, iterations = 80) {
+  const noteIds = storageState.notes.map(n => n.id);
+  const allEdges = [
+    ...storageState.links.map(l => ({ source: l.source_id, target: l.target_id })),
+    ...storageState.evolutions.map(e => ({ source: e.source_id, target: e.target_id }))
+  ];
+
+  const k = Math.sqrt((width * height) / Math.max(noteIds.length, 1));
+  const repulsion = k * 1.4;
+  const attraction = k * 0.6;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const cooling = 1 - iter / iterations;
+
+    // 반발력
+    for (let i = 0; i < noteIds.length; i++) {
+      for (let j = i + 1; j < noteIds.length; j++) {
+        const a = nodes[noteIds[i]], b = nodes[noteIds[j]];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+        const force = (repulsion * repulsion) / dist;
+        const fx = (dx / dist) * force, fy = (dy / dist) * force;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
+      }
+    }
+
+    // 인력 (엣지)
+    allEdges.forEach(({ source, target }) => {
+      const a = nodes[source], b = nodes[target];
+      if (!a || !b) return;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+      const force = (dist * dist) / attraction;
+      const fx = (dx / dist) * force * 0.5, fy = (dy / dist) * force * 0.5;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    });
+
+    // 위치 업데이트 + 경계 처리
+    const maxDisp = 30 * cooling + 2;
+    const pad = 40;
+    noteIds.forEach(id => {
+      const n = nodes[id];
+      const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy) || 1;
+      const clamp = Math.min(speed, maxDisp);
+      n.x += (n.vx / speed) * clamp;
+      n.y += (n.vy / speed) * clamp;
+      n.x = Math.max(pad, Math.min(width - pad, n.x));
+      n.y = Math.max(pad, Math.min(height - pad, n.y));
+      n.vx *= 0.6; n.vy *= 0.6;
+    });
+  }
 }
 
 function renderStorageGraph() {
   const panel = document.getElementById('storageGraph');
   if (!panel) return;
   panel.innerHTML = '';
-
   if (storageState.notes.length === 0) {
     panel.innerHTML = '<div class="storage-empty">No completed notes to render yet.</div>';
     return;
@@ -459,76 +653,69 @@ function renderStorageGraph() {
 
   const width = Math.max(320, panel.clientWidth || 320);
   const height = Math.max(260, panel.clientHeight || 260);
-  const positions = computeStoragePositions(width, height);
+
+  const nodes = initGraphPositions(width, height);
+  runForceLayout(nodes, width, height, storageState.notes.length > 1 ? 80 : 0);
 
   const svg = createSvgEl('svg', { class: 'storage-graph-svg', viewBox: `0 0 ${width} ${height}` });
+
+  // defs: 화살표 마커 두 종류
   const defs = createSvgEl('defs');
-  const marker = createSvgEl('marker', {
-    id: 'spa-arrow',
-    viewBox: '0 0 10 10',
-    refX: '9',
-    refY: '5',
-    markerWidth: '7',
-    markerHeight: '7',
-    orient: 'auto-start-reverse'
-  });
-  marker.appendChild(createSvgEl('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#8b95a7' }));
-  defs.appendChild(marker);
+
+  const makeMarker = (id, color) => {
+    const marker = createSvgEl('marker', { id, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+    marker.appendChild(createSvgEl('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color }));
+    return marker;
+  };
+  defs.appendChild(makeMarker('arrow-link', 'var(--accent)'));
+  defs.appendChild(makeMarker('arrow-evo', '#9b7ec8'));
   svg.appendChild(defs);
 
+  // NoteLink 엣지 (실선)
   storageState.links.forEach((link) => {
-    const from = positions.get(link.source_id);
-    const to = positions.get(link.target_id);
+    const from = nodes[link.source_id], to = nodes[link.target_id];
     if (!from || !to) return;
-
-    svg.appendChild(createSvgEl('line', {
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
-      class: 'storage-edge',
-      'marker-end': 'url(#spa-arrow)'
-    }));
-
-    const label = createSvgEl('text', {
-      x: (from.x + to.x) / 2,
-      y: (from.y + to.y) / 2 - 4,
-      class: 'storage-edge-label'
-    });
-    label.textContent = (link.type || 'related').slice(0, 12);
+    const line = createSvgEl('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: 'storage-edge', 'marker-end': 'url(#arrow-link)' });
+    svg.appendChild(line);
+    const label = createSvgEl('text', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 5, class: 'storage-edge-label' });
+    label.textContent = link.type || 'related';
     svg.appendChild(label);
   });
 
-  storageState.notes.forEach((note) => {
-    const point = positions.get(note.id);
-    const selected = note.id === storageState.selectedNoteId;
-    const radius = selected ? 18 : 14;
+  // NoteEvolution 엣지 (점선 + 보라색)
+  storageState.evolutions.forEach((evo) => {
+    const from = nodes[evo.source_id], to = nodes[evo.target_id];
+    if (!from || !to) return;
+    const line = createSvgEl('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: 'storage-edge evo-edge', 'marker-end': 'url(#arrow-evo)', 'stroke-dasharray': '5 3' });
+    svg.appendChild(line);
+    const label = createSvgEl('text', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 5, class: 'storage-edge-label evo-label' });
+    label.textContent = evo.evolution_type;
+    svg.appendChild(label);
+  });
 
-    const node = createSvgEl('circle', {
-      cx: point.x,
-      cy: point.y,
-      r: radius,
-      class: 'storage-node' + (selected ? ' selected' : '')
-    });
-    node.addEventListener('click', () => {
+  // 노드
+  storageState.notes.forEach((note) => {
+    const pos = nodes[note.id];
+    const selected = note.id === storageState.selectedNoteId;
+    const r = selected ? 18 : 14;
+    const circle = createSvgEl('circle', { cx: pos.x, cy: pos.y, r, class: 'storage-node' + (selected ? ' selected' : '') });
+    circle.addEventListener('click', () => {
       storageState.selectedNoteId = note.id;
       renderStorageList();
       renderStorageGraph();
       renderStorageDetail();
     });
-    svg.appendChild(node);
+    svg.appendChild(circle);
 
-    const text = createSvgEl('text', {
-      x: point.x,
-      y: point.y + radius + 13,
-      class: 'storage-node-label'
-    });
-    text.textContent = trimText(note.content, 16);
+    const text = createSvgEl('text', { x: pos.x, y: pos.y + r + 13, class: 'storage-node-label' });
+    text.textContent = trimText(note.content, 14);
     svg.appendChild(text);
   });
 
   panel.appendChild(svg);
 }
+
+// ── STORAGE DETAIL ──
 
 function renderStorageDetail() {
   const panel = document.getElementById('storageDetail');
@@ -540,533 +727,189 @@ function renderStorageDetail() {
     return;
   }
 
-  const note = getStorageNoteById(storageState.selectedNoteId);
-  if (!note) {
-    panel.className = 'storage-empty';
-    panel.textContent = 'Selected note was not found.';
-    return;
-  }
+  const note = storageState.notes.find(n => n.id === storageState.selectedNoteId);
+  if (!note) { panel.className = 'storage-empty'; panel.textContent = 'Note not found.'; return; }
 
-  const relatedLinks = getStorageRelatedLinks(note.id);
-  const targetCandidates = getStorageTargetCandidates(note.id);
-  const targetOptions = targetCandidates
-    .map((item) => `<option value="${escapeHtml(item.display)}"></option>`)
+  const relatedLinks = storageState.links.filter(l => l.source_id === note.id || l.target_id === note.id);
+  const relatedEvos = storageState.evolutions.filter(e => e.source_id === note.id || e.target_id === note.id);
+
+  const targetOptions = storageState.notes
+    .filter(n => n.id !== note.id)
+    .map(n => `<option value="${escapeHtml(trimText(n.content, 64))}"></option>`)
     .join('');
-  const relationOptions = linkTypeOptions
-    .map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)
-    .join('');
+
+  const linkTypeHtml = LINK_TYPE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('');
+  const evoTypeHtml = EVOLUTION_TYPE_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join('');
 
   panel.className = '';
   panel.innerHTML = `
-    <h2 style="margin: 0 0 8px 0; font-size: 20px;">Note Detail</h2>
-    <p style="margin: 0 0 14px 0; color: #6b7280; font-size: 12px;">Created: ${escapeHtml(new Date(note.created_at).toLocaleString())}</p>
+    <h2 style="margin:0 0 8px;font-size:20px">Note Detail</h2>
+    <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted)">Created: ${escapeHtml(new Date(note.created_at).toLocaleString())}</p>
     <div class="storage-note-box">${escapeHtml(note.content || '(No content)')}</div>
 
-    <h3 class="storage-section-title">Add Link</h3>
-    <div class="storage-link-form">
-      <input id="storageTargetSearch" list="storageTargetOptions" class="storage-input" placeholder="Search note text or paste note id">
-      <datalist id="storageTargetOptions">${targetOptions}</datalist>
-      <select id="storageType" class="storage-select">${relationOptions}</select>
-      <button id="storageAddLink" class="storage-btn primary">Link Note</button>
-    </div>
-    <p class="storage-link-help">Type part of a note to search target, then choose a relation.</p>
-
-    <h3 class="storage-section-title">Related Links (${relatedLinks.length})</h3>
+    <h3 class="storage-section-title">Links <span style="font-size:11px;font-weight:400;opacity:.7">(${relatedLinks.length})</span></h3>
     <div id="storageLinks"></div>
+    <div class="storage-link-form" style="margin-top:8px">
+      <input id="sLinkTarget" list="sLinkTargetList" class="storage-input" placeholder="Search note…">
+      <datalist id="sLinkTargetList">${targetOptions}</datalist>
+      <select id="sLinkType" class="storage-select">${linkTypeHtml}</select>
+      <button id="sAddLink" class="storage-btn primary">Add</button>
+    </div>
 
-    <button id="storageDeleteNote" class="storage-btn danger">Delete Note</button>
-  `;
+    <h3 class="storage-section-title">Evolutions <span style="font-size:11px;font-weight:400;opacity:.7">(${relatedEvos.length})</span></h3>
+    <div id="storageEvolutions"></div>
+    <div class="storage-link-form" style="margin-top:8px">
+      <input id="sEvoTarget" list="sEvoTargetList" class="storage-input" placeholder="Search note…">
+      <datalist id="sEvoTargetList">${targetOptions}</datalist>
+      <select id="sEvoType" class="storage-select">${evoTypeHtml}</select>
+      <button id="sAddEvo" class="storage-btn primary">Add</button>
+    </div>
+
+    <button id="storageDeleteNote" class="storage-btn danger">Delete Note</button>`;
 
   renderStorageLinks(relatedLinks, note.id);
+  renderStorageEvolutions(relatedEvos, note.id);
 
-  document.getElementById('storageAddLink').addEventListener('click', addStorageLink);
-  document.getElementById('storageDeleteNote').addEventListener('click', deleteStorageNote);
+  document.getElementById('sAddLink').addEventListener('click', () => addStorageLink(note.id));
+  document.getElementById('sAddEvo').addEventListener('click', () => addStorageEvolution(note.id));
+  document.getElementById('storageDeleteNote').addEventListener('click', () => deleteStorageNote(note.id));
 }
 
-function renderStorageLinks(relatedLinks, noteId) {
+function renderStorageLinks(links, noteId) {
   const container = document.getElementById('storageLinks');
   if (!container) return;
-
-  if (relatedLinks.length === 0) {
-    container.innerHTML = '<div class="storage-empty" style="padding: 10px 0;">No related links.</div>';
-    return;
-  }
-
-  container.innerHTML = relatedLinks.map((link) => {
-    const outgoing = link.source_id === noteId;
-    const otherId = outgoing ? link.target_id : link.source_id;
-    const other = getStorageNoteById(otherId);
-    const direction = outgoing ? '->' : '<-';
+  if (links.length === 0) { container.innerHTML = '<div class="storage-empty" style="padding:8px 0">No links.</div>'; return; }
+  container.innerHTML = links.map((link) => {
+    const out = link.source_id === noteId;
+    const other = storageState.notes.find(n => n.id === (out ? link.target_id : link.source_id));
     return `
       <div class="storage-link-row">
         <div class="storage-link-head">
           <span class="storage-link-type">${escapeHtml(link.type || 'related')}</span>
-          <button class="storage-link-remove" data-link-id="${link.id}">Delete</button>
+          <button class="storage-link-remove" data-id="${link.id}">Delete</button>
         </div>
-        <div>${direction} ${escapeHtml(trimText(other ? other.content : '(Deleted note)', 48))}</div>
-      </div>
-    `;
+        <div>${out ? '→' : '←'} ${escapeHtml(trimText(other ? other.content : '(Deleted)', 48))}</div>
+      </div>`;
   }).join('');
-
   container.querySelectorAll('.storage-link-remove').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      await deleteStorageLink(btn.dataset.linkId);
+      await deleteLink(btn.dataset.id);
+      await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+      showStatus('storageStatus', 'Link deleted.', 'success');
     });
   });
 }
 
-async function addStorageLink() {
-  const target = document.getElementById('storageTargetSearch');
-  const type = document.getElementById('storageType');
-  if (!target || !type || !storageState.selectedNoteId) return;
-
-  const targetQuery = target.value.trim();
-  const targetMatch = findStorageTargetByQuery(storageState.selectedNoteId, targetQuery);
-  const targetId = targetMatch ? targetMatch.id : '';
-  const linkType = type.value.trim() || 'related';
-  if (!targetId) {
-    showStorageStatus('Target note not found. Try a more specific keyword.', 'error');
-    return;
-  }
-
-  const duplicated = storageState.links.find((link) =>
-    link.source_id === storageState.selectedNoteId &&
-    link.target_id === targetId &&
-    (link.type || 'related') === linkType
-  );
-  if (duplicated) {
-    showStorageStatus('The same link already exists.', 'error');
-    return;
-  }
-
-  await saveLink({
-    id: generateId(),
-    source_id: storageState.selectedNoteId,
-    target_id: targetId,
-    type: linkType,
-    weight: 1,
-    created_at: new Date().toISOString()
-  });
-
-  await loadStorageData();
-  renderStorageList();
-  renderStorageGraph();
-  renderStorageDetail();
-  showStorageStatus('Link added.', 'success');
-}
-
-async function deleteStorageLink(linkId) {
-  if (!confirm('Delete this link?')) return;
-  await deleteLink(linkId);
-  await loadStorageData();
-  renderStorageList();
-  renderStorageGraph();
-  renderStorageDetail();
-  showStorageStatus('Link deleted.', 'success');
-}
-
-async function deleteStorageNote() {
-  if (!storageState.selectedNoteId) return;
-  if (!confirm('Delete selected note?')) return;
-
-  const noteId = storageState.selectedNoteId;
-  await deleteNote(noteId);
-  const related = getStorageRelatedLinks(noteId);
-  for (const link of related) {
-    await deleteLink(link.id);
-  }
-
-  storageState.selectedNoteId = null;
-  await loadStorageData();
-  renderStorageList();
-  renderStorageGraph();
-  renderStorageDetail();
-  showStorageStatus('Note deleted.', 'success');
-}
-
-function showStorageStatus(message, type) {
-  const status = document.getElementById('storageStatus');
-  if (!status) return;
-  status.textContent = message;
-  status.className = 'storage-status show ' + type;
-  setTimeout(() => {
-    status.className = 'storage-status';
-  }, 2500);
-}
-
-function renderProcessingList() {
-  const panel = document.getElementById('processingList');
-  if (!panel) return;
-
-  if (processingState.notes.length === 0) {
-    panel.innerHTML = '<div style="padding: 20px; color: #999;">No notes</div>';
-    return;
-  }
-
-  panel.innerHTML = processingState.notes.map((note, idx) => {
-    const selectedClass = idx === processingState.selectedIndex ? ' selected' : '';
-    return `
-      <div class="processing-item${selectedClass}">
-        <div class="processing-item-content" data-action="select" data-idx="${idx}">
-          <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
-          <div class="processing-item-meta">
-            <span class="processing-status-chip ${escapeHtml(note.status || 'inbox')}">${escapeHtml(getNoteStatusLabel(note.status))}</span>
-            <span class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</span>
-          </div>
-        </div>
-        <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">Delete</button>
-      </div>
-    `;
-  }).join('');
-
-  panel.querySelectorAll('[data-action=\"select\"]').forEach((el) => {
-    el.addEventListener('click', () => {
-      processingState.selectedIndex = Number(el.dataset.idx);
-      renderProcessingList();
-      renderProcessingDetail();
-    });
-  });
-
-  panel.querySelectorAll('[data-action=\"delete\"]').forEach((el) => {
-    el.addEventListener('click', async (event) => {
-      event.stopPropagation();
-      await deleteProcessingNote(el.dataset.id);
-    });
-  });
-}
-
-function renderProcessingDetail() {
-  const panel = document.getElementById('processingDetail');
-  if (!panel) return;
-
-  const selected = processingState.notes[processingState.selectedIndex];
-  if (!selected) {
-    panel.innerHTML = `
-      <div class="processing-legend">
-        <p><strong>Inbox</strong>: quick captures waiting for first review.</p>
-        <p><strong>Processing</strong>: notes you're actively refining, linking, and preparing for Done.</p>
-      </div>
-      <p>Select a note...</p>
-    `;
-    return;
-  }
-
-  const currentStatus = selected.status || 'inbox';
-  const toggleTarget = currentStatus === 'processing' ? 'inbox' : 'processing';
-  const toggleLabel = currentStatus === 'processing' ? 'Move back to Inbox' : 'Start Processing';
-  const toggleHelp = currentStatus === 'processing'
-    ? 'Send this note back for later review.'
-    : 'Move this note into the active processing queue.';
-  const relatedLinks = getProcessingRelatedLinks(selected.id);
-  const targetOptions = getProcessingTargetCandidates(selected.id)
-    .map((item) => `<option value="${escapeHtml(item.display)}"></option>`)
-    .join('');
-  const relationOptions = linkTypeOptions
-    .map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)
-    .join('');
-
-  panel.innerHTML = `
-    <div id="processingStatus" class="processing-status"></div>
-    <h2 style="margin-top: 0;">Note</h2>
-    <p><small>Created: ${escapeHtml(new Date(selected.created_at).toLocaleString())}</small></p>
-    <p><small>Current status: <strong>${escapeHtml(getNoteStatusLabel(currentStatus))}</strong></small></p>
-    <label for="processingContent"><small>Content</small></label>
-    <textarea id="processingContent" class="processing-content-input">${escapeHtml(selected.content || '')}</textarea>
-    <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
-
-    <div class="processing-btn-row">
-      <button class="processing-btn primary" id="toggleProcessingBtn">${toggleLabel}</button>
-      <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
-    </div>
-    <p class="processing-help-text">${escapeHtml(toggleHelp)}</p>
-
-    <h3 class="storage-section-title">Prepare Link</h3>
-    <div class="storage-link-form">
-      <input id="processingTargetSearch" list="processingTargetOptions" class="storage-input" placeholder="Search note text or paste note id">
-      <datalist id="processingTargetOptions">${targetOptions}</datalist>
-      <select id="processingType" class="storage-select">${relationOptions}</select>
-      <button id="processingAddLinkBtn" class="storage-btn primary">Add Prep Link</button>
-    </div>
-    <p class="storage-link-help">Links created here are stored now and show in Storage graph once both notes are Done.</p>
-
-    <h3 class="storage-section-title">Prepared Links (${relatedLinks.length})</h3>
-    <div id="processingLinks"></div>
-
-    <button class="processing-btn danger" id="deleteNoteBtn">Delete Note</button>
-  `;
-
-  renderProcessingLinks(relatedLinks, selected.id);
-
-  document.getElementById('saveProcessingNoteBtn').addEventListener('click', async () => {
-    await saveProcessingContent(selected.id);
-  });
-
-  document.getElementById('toggleProcessingBtn').addEventListener('click', async () => {
-    await updateProcessingStatus(toggleTarget);
-  });
-
-  document.getElementById('moveDoneBtn').addEventListener('click', async () => {
-    await updateProcessingStatus('done');
-  });
-
-  document.getElementById('deleteNoteBtn').addEventListener('click', async () => {
-    await deleteProcessingNote(selected.id);
-  });
-
-  document.getElementById('processingAddLinkBtn').addEventListener('click', async () => {
-    await addProcessingLink(selected.id);
-  });
-}
-
-function renderProcessingLinks(relatedLinks, noteId) {
-  const container = document.getElementById('processingLinks');
+function renderStorageEvolutions(evos, noteId) {
+  const container = document.getElementById('storageEvolutions');
   if (!container) return;
-
-  if (relatedLinks.length === 0) {
-    container.innerHTML = '<div class="storage-empty" style="padding: 10px 0;">No prepared links yet.</div>';
-    return;
-  }
-
-  container.innerHTML = relatedLinks.map((link) => {
-    const outgoing = link.source_id === noteId;
-    const otherId = outgoing ? link.target_id : link.source_id;
-    const otherNote = getProcessingNoteById(otherId);
-    const direction = outgoing ? '->' : '<-';
+  if (evos.length === 0) { container.innerHTML = '<div class="storage-empty" style="padding:8px 0">No evolutions.</div>'; return; }
+  container.innerHTML = evos.map((evo) => {
+    const out = evo.source_id === noteId;
+    const other = storageState.notes.find(n => n.id === (out ? evo.target_id : evo.source_id));
     return `
-      <div class="storage-link-row">
+      <div class="storage-link-row evo-row">
         <div class="storage-link-head">
-          <span class="storage-link-type">${escapeHtml(link.type || 'related')}</span>
-          <button class="storage-link-remove" data-link-id="${link.id}">Delete</button>
+          <span class="storage-link-type evo-type ${escapeHtml(evo.evolution_type)}">${escapeHtml(evo.evolution_type)}</span>
+          <button class="storage-link-remove" data-id="${evo.id}">Delete</button>
         </div>
-        <div>${direction} ${escapeHtml(trimText(otherNote ? otherNote.content : '(Deleted note)', 48))}</div>
-      </div>
-    `;
+        <div>${out ? '→' : '←'} ${escapeHtml(trimText(other ? other.content : '(Deleted)', 48))}</div>
+      </div>`;
   }).join('');
-
-  container.querySelectorAll('.storage-link-remove').forEach((button) => {
-    button.addEventListener('click', async () => {
-      await deleteProcessingLink(button.dataset.linkId, noteId);
+  container.querySelectorAll('.storage-link-remove').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await deleteEvolution(btn.dataset.id);
+      await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+      showStatus('storageStatus', 'Evolution deleted.', 'success');
     });
   });
 }
 
-async function saveProcessingContent(noteId) {
-  const contentInput = document.getElementById('processingContent');
-  if (!contentInput) return;
-
-  const content = contentInput.value.trim();
-  if (!content) {
-    showProcessingStatus('Content cannot be empty.', 'error');
-    return;
-  }
-
-  try {
-    await updateNote(noteId, { content });
-    await reloadProcessingAndSelect(noteId);
-    showProcessingStatus('Content updated.', 'success');
-  } catch (error) {
-    showProcessingStatus('Save failed: ' + error.message, 'error');
-  }
+async function addStorageLink(noteId) {
+  const targetQuery = document.getElementById('sLinkTarget').value.trim();
+  const linkType = document.getElementById('sLinkType').value || 'related';
+  const target = findNoteByQuery(noteId, targetQuery, storageState.notes);
+  if (!target) { showStatus('storageStatus', 'Target not found.', 'error'); return; }
+  const dup = storageState.links.find(l => l.source_id === noteId && l.target_id === target.id && l.type === linkType);
+  if (dup) { showStatus('storageStatus', 'Same link already exists.', 'error'); return; }
+  await saveLink({ id: generateId(), source_id: noteId, target_id: target.id, type: linkType, created_at: new Date().toISOString() });
+  await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+  showStatus('storageStatus', 'Link added.', 'success');
 }
 
-async function addProcessingLink(noteId) {
-  const targetInput = document.getElementById('processingTargetSearch');
-  const relationSelect = document.getElementById('processingType');
-  if (!targetInput || !relationSelect) return;
-
-  const targetQuery = targetInput.value.trim();
-  const targetMatch = findProcessingTargetByQuery(noteId, targetQuery);
-  if (!targetMatch) {
-    showProcessingStatus('Target note not found. Try a more specific keyword.', 'error');
-    return;
-  }
-
-  const linkType = relationSelect.value.trim() || 'related';
-  const duplicated = processingState.links.find((link) =>
-    link.source_id === noteId &&
-    link.target_id === targetMatch.id &&
-    (link.type || 'related') === linkType
-  );
-
-  if (duplicated) {
-    showProcessingStatus('The same link already exists.', 'error');
-    return;
-  }
-
-  try {
-    await saveLink({
-      id: generateId(),
-      source_id: noteId,
-      target_id: targetMatch.id,
-      type: linkType,
-      weight: 1,
-      created_at: new Date().toISOString()
-    });
-    await reloadProcessingAndSelect(noteId);
-    showProcessingStatus('Prepared link added.', 'success');
-  } catch (error) {
-    showProcessingStatus('Link add failed: ' + error.message, 'error');
-  }
+async function addStorageEvolution(noteId) {
+  const targetQuery = document.getElementById('sEvoTarget').value.trim();
+  const evoType = document.getElementById('sEvoType').value || 'extends';
+  const target = findNoteByQuery(noteId, targetQuery, storageState.notes);
+  if (!target) { showStatus('storageStatus', 'Target not found.', 'error'); return; }
+  const dup = storageState.evolutions.find(e => e.source_id === noteId && e.target_id === target.id && e.evolution_type === evoType);
+  if (dup) { showStatus('storageStatus', 'Same evolution already exists.', 'error'); return; }
+  await saveEvolution({ id: generateId(), source_id: noteId, target_id: target.id, evolution_type: evoType, evolved_at: new Date().toISOString() });
+  await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+  showStatus('storageStatus', 'Evolution added.', 'success');
 }
 
-async function deleteProcessingLink(linkId, noteId) {
-  if (!confirm('Delete this prepared link?')) return;
-  try {
-    await deleteLink(linkId);
-    await reloadProcessingAndSelect(noteId);
-    showProcessingStatus('Prepared link deleted.', 'success');
-  } catch (error) {
-    showProcessingStatus('Link delete failed: ' + error.message, 'error');
-  }
+async function deleteStorageNote(noteId) {
+  if (!confirm('Delete selected note?')) return;
+  await deleteNote(noteId);
+  const related = storageState.links.filter(l => l.source_id === noteId || l.target_id === noteId);
+  const relatedEvos = storageState.evolutions.filter(e => e.source_id === noteId || e.target_id === noteId);
+  for (const l of related) await deleteLink(l.id);
+  for (const e of relatedEvos) await deleteEvolution(e.id);
+  storageState.selectedNoteId = null;
+  await loadStorageData(); renderStorageList(); renderStorageGraph(); renderStorageDetail();
+  showStatus('storageStatus', 'Note deleted.', 'success');
 }
 
-async function updateProcessingStatus(status) {
-  const selected = processingState.notes[processingState.selectedIndex];
-  if (!selected) return;
-
-  try {
-    await updateNote(selected.id, { status });
-    await reloadProcessingAndSelect(selected.id);
-    if (processingState.selectedIndex === -1) {
-      showProcessingStatus('Status updated.', 'success');
-    }
-  } catch (error) {
-    showProcessingStatus('Update failed: ' + error.message, 'error');
-  }
-}
-
-async function deleteProcessingNote(noteId) {
-  if (!confirm('Delete this note?')) return;
-
-  try {
-    await deleteNote(noteId);
-    processingState.selectedIndex = -1;
-    await reloadProcessingAndSelect();
-  } catch (error) {
-    showProcessingStatus('Delete failed: ' + error.message, 'error');
-  }
-}
-
-function showProcessingStatus(message, type) {
-  const statusEl = document.getElementById('processingStatus');
-  if (!statusEl) return;
-
-  statusEl.textContent = message;
-  statusEl.className = 'processing-status show ' + type;
-}
-
-async function loadHomeStats() {
-  const inboxEl = document.getElementById('inboxCount');
-  const doneEl = document.getElementById('doneCount');
-  const totalEl = document.getElementById('totalCount');
-  if (!inboxEl || !doneEl || !totalEl) return;
-
-  try {
-    const [inbox, done, total] = await Promise.all([
-      getNotes({ status: 'inbox', include_deleted: false }),
-      getNotes({ status: 'done', include_deleted: false }),
-      getNotes({ include_deleted: false })
-    ]);
-
-    inboxEl.textContent = inbox.length;
-    doneEl.textContent = done.length;
-    totalEl.textContent = total.length;
-  } catch (error) {
-    console.error('Failed to load stats:', error);
-  }
-}
+// ── ROUTE ──
 
 function clearTimers() {
-  if (statsIntervalId) {
-    clearInterval(statsIntervalId);
-    statsIntervalId = null;
-  }
+  if (statsIntervalId) { clearInterval(statsIntervalId); statsIntervalId = null; }
 }
 
 async function renderRoute() {
   clearTimers();
-
   const route = getRouteKeyFromLocation();
   renderNav(route);
 
   if (route === 'home') {
-    renderHome();
-    await loadHomeStats();
+    renderHome(); await loadHomeStats();
     statsIntervalId = setInterval(loadHomeStats, 5000);
     return;
   }
-
-  if (route === 'capture') {
-    renderCapture();
-    return;
-  }
-
-  if (route === 'processing') {
-    await loadProcessingNotes();
-    renderProcessing();
-    return;
-  }
-
-  if (route !== 'storage') {
-    renderPlaceholder('Not Found');
-    return;
-  }
-
-  await loadStorageData();
-  renderStorage();
+  if (route === 'capture') { renderCapture(); return; }
+  if (route === 'processing') { await loadProcessingNotes(); renderProcessing(); return; }
+  if (route === 'storage') { await loadStorageData(); renderStorage(); return; }
+  document.getElementById('app-root').innerHTML = '<section class="placeholder"><h2>Not Found</h2></section>';
 }
 
 async function initApp() {
   applyRouteFromQueryFallback();
-
   try {
     await initDB();
     await renderRoute();
-  } catch (error) {
-    console.error('Failed to initialize app:', error);
-    document.getElementById('app-root').innerHTML = `
-      <section class="placeholder">
-        <h2>Initialization Error</h2>
-        <p>${error.message}</p>
-      </section>
-    `;
+  } catch (e) {
+    console.error('Failed to initialize app:', e);
+    document.getElementById('app-root').innerHTML = `<section class="placeholder"><h2>Initialization Error</h2><p>${e.message}</p></section>`;
   }
 
-  window.addEventListener('popstate', () => {
-    renderRoute();
-  });
-
+  window.addEventListener('popstate', () => renderRoute());
   window.addEventListener('resize', () => {
     if (getRouteKeyFromLocation() === 'storage') {
+      storageState.graphNodes = null; // 리사이즈 시 위치 재계산
       renderStorageGraph();
     }
   });
-
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    deferredPrompt = event;
-    const installBtn = document.getElementById('installBtn');
-    if (installBtn) installBtn.style.display = 'inline-block';
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); deferredPrompt = e;
+    const btn = document.getElementById('installBtn');
+    if (btn) btn.style.display = 'inline-block';
   });
-
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch((error) => {
-        console.error('SW registration failed:', error);
-      });
+      navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW registration failed:', e));
     });
   }
-}
-
-function bindRouteLinks(scope) {
-  scope.querySelectorAll('a[data-route]').forEach((anchor) => {
-    anchor.addEventListener('click', (event) => {
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault();
-      const routeKey = anchor.dataset.route || 'home';
-      navigateToRoute(routeKey);
-    });
-  });
 }
 
 window.addEventListener('DOMContentLoaded', initApp);

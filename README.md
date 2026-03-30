@@ -28,12 +28,23 @@ Processing behavior:
 - explains role difference: `inbox` (unreviewed) vs `processing` (active refinement)
 - allows toggling between `inbox` <-> `processing`
 - supports editing note content directly in processing detail
-- supports preparing links before notes are done
+- supports preparing directional links before notes are done
+- supports preparing note evolutions before notes are done
 - allows moving notes to `done`
 
-Storage link behavior:
-- relation type is selected via dropdown
-- target note is searched with text input (datalist suggestions)
+Connection model:
+- Link types are normalized to: `derive`, `contradict`, `support`, `related`
+- Evolution types: `extends`, `shrinks`, `decay`
+- IndexedDB migration (`v1 -> v2`) remaps legacy link types:
+  - `supports -> support`
+  - `contrasts -> contradict`
+  - `depends_on -> derive`
+  - `duplicates -> related`
+
+Storage graph behavior:
+- renders links and evolutions together in the graph
+- uses force-directed positioning and resets cached node positions when data changes
+- uses different edge styles for links vs evolutions
 
 Responsive layout behavior:
 - Processing page switches to stacked layout on narrow screens
@@ -74,7 +85,7 @@ python -m http.server 8000
 ## Data Layer (`db.js`)
 
 Default: `IndexedDBStore`
-- object stores: `notes`, `links`
+- object stores: `notes`, `links`, `evolutions`
 - filters by status/tag/query
 - soft delete support
 
@@ -84,13 +95,15 @@ Optional: `FirestoreStore`
 
 Public API:
 - `initDB`, `saveNote`, `getNotes`, `getNoteById`, `updateNote`, `deleteNote`
-- `saveLink`, `getLinks`, `deleteLink`, `clearDB`
+- `saveLink`, `getLinks`, `deleteLink`
+- `saveEvolution`, `getEvolutions`, `deleteEvolution`
+- `clearDB`
 - `setConfig`, `getConfig`
 
 ## PWA / Offline
 
 - `manifest.json` uses relative URLs
-- `sw.js` precaches SPA assets and fallback page (`memoirage-static-v8`)
+- `sw.js` precaches SPA assets and fallback page (`memoirage-static-v9`)
 - Service worker is registered by `app.js`
 
 ## GitHub Pages

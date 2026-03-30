@@ -14,6 +14,10 @@ Memoirage uses a single-page app shell:
 - `app.css`: shared SPA styles
 - `db.js`: storage abstraction
 
+Current relationship model:
+- `links`: directional semantic connections (`derive`, `contradict`, `support`, `related`)
+- `evolutions`: directional time/change transitions (`extends`, `shrinks`, `decay`)
+
 Routing model:
 - History API routes: `/`, `/capture`, `/processing`, `/storage`
 - `404.html` provides static-host fallback and route recovery via `?route=`
@@ -55,21 +59,34 @@ memoirage/
 - toggle note status between `inbox` and `processing`
 - edit note content directly
 - prepare/delete links before done state
+- prepare/delete evolutions before done state
 - move to `done`
 - soft delete notes
 - responsive layout stacks list/detail sections on narrow screens
 
 4. Storage (`/storage`)
 - list done notes
-- SVG graph rendering of note links
-- add links with relation dropdown + note text search
-- delete links and notes
+- SVG graph rendering of both links and evolutions
+- force-directed node layout with cached positions
+- add links/evolutions with type dropdown + note text search
+- delete links, evolutions, and notes
 - responsive layout switches from 3-column desktop grid to stacked mobile sections
+
+## Data model notes
+
+- IndexedDB version is `2`
+- Stores: `notes`, `links`, `evolutions`
+- Migration (`v1 -> v2`) remaps old link types:
+  - `supports -> support`
+  - `contrasts -> contradict`
+  - `depends_on -> derive`
+  - `duplicates -> related`
+- Firestore mode mirrors the same `links` + `evolutions` API surface
 
 ## PWA alignment
 
 - `manifest.json` is configured for SPA start (`./`)
-- `sw.js` precaches SPA files and fallback page (cache name: `memoirage-static-v8`)
+- `sw.js` precaches SPA files and fallback page (cache name: `memoirage-static-v9`)
 - app registers service worker from `app.js`
 
 ## Current priorities
