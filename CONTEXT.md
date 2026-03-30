@@ -111,7 +111,7 @@ Next:
 Later:
 - [x] Add attachments model incrementally without breaking offline-first flow
 - [x] Introduce cluster/membership model behind a hidden/advanced UI gate
-- [ ] Add optional AI refine/merge path with graceful fallback and no hard dependency
+- [x] Add optional AI refine/merge path with graceful fallback and no hard dependency
 
 ## Working rule for new features
 

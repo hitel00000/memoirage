@@ -43,6 +43,9 @@ Processing behavior:
 - allows toggling between `inbox` <-> `processing`
 - supports editing note content directly in processing detail
 - supports adding/removing URL attachments per note (stored in note payload)
+- supports optional AI refine action in editor:
+  - uses `window.memoirageAI.refine(content)` when host provider is present
+  - gracefully falls back to local text normalization when provider is unavailable
 - supports preparing directional links before notes are done
 - supports preparing note evolutions before notes are done
 - allows moving notes to `done`
@@ -187,7 +190,7 @@ P3:
 - Add richer attachments and cluster/membership model incrementally
 
 P4:
-- Add optional AI refine/merge support with graceful fallback
+- Extend optional AI refine/merge support with richer merge strategies
 
 ## Feature Acceptance Rule
 

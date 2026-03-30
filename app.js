@@ -258,6 +258,31 @@ function renderClusterChip(note) {
   return `<span class="note-tag-chip cluster">cluster:${escapeHtml(note.cluster_id)}</span>`;
 }
 
+function fallbackRefineText(content) {
+  const text = String(content || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+async function runOptionalAiRefine(content) {
+  const maybeProvider = window.memoirageAI;
+  if (maybeProvider && typeof maybeProvider.refine === 'function') {
+    try {
+      const result = await maybeProvider.refine(content);
+      if (result && typeof result.text === 'string' && result.text.trim()) {
+        return { text: result.text.trim(), mode: 'provider' };
+      }
+    } catch (_) {
+      // fall through to local fallback
+    }
+  }
+  return { text: fallbackRefineText(content), mode: 'fallback' };
+}
+
 function createSvgEl(tag, attrs = {}) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
@@ -588,7 +613,10 @@ function renderProcessingDetail() {
     <p><small>Status: <strong>${status === 'processing' ? 'Processing' : 'Inbox'}</strong></small></p>
     <label for="processingContent"><small>Content</small></label>
     <textarea id="processingContent" class="processing-content-input">${escapeHtml(selected.content || '')}</textarea>
-    <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
+    <div class="processing-btn-row">
+      <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
+      <button class="processing-btn" id="aiRefineBtn">AI Refine (Optional)</button>
+    </div>
     <div class="processing-btn-row">
       <button class="processing-btn primary" id="toggleProcessingBtn">${escapeHtml(toggleLabel)}</button>
       <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
@@ -634,6 +662,33 @@ function renderProcessingDetail() {
       await reloadProcessingAndSelect(selected.id);
       showStatus('processingStatus', 'Saved.', 'success');
     } catch (e) { showStatus('processingStatus', 'Save failed: ' + e.message, 'error'); }
+  });
+
+  document.getElementById('aiRefineBtn').addEventListener('click', async () => {
+    const textarea = document.getElementById('processingContent');
+    if (!textarea) return;
+    const content = textarea.value.trim();
+    if (!content) {
+      showStatus('processingStatus', 'Content cannot be empty.', 'error');
+      return;
+    }
+    const btn = document.getElementById('aiRefineBtn');
+    btn.disabled = true;
+    btn.textContent = 'Refining…';
+    try {
+      const refined = await runOptionalAiRefine(content);
+      if (!refined.text) {
+        showStatus('processingStatus', 'Refine produced empty result.', 'error');
+        return;
+      }
+      textarea.value = refined.text;
+      showStatus('processingStatus', refined.mode === 'provider' ? 'Refined with AI provider.' : 'Refined with local fallback.', 'success');
+    } catch (e) {
+      showStatus('processingStatus', 'Refine failed: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'AI Refine (Optional)';
+    }
   });
 
   document.getElementById('toggleProcessingBtn').addEventListener('click', async () => {

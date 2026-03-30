@@ -408,6 +408,8 @@ h1 {
     cursor: pointer;
     font-size: 13px;
     padding: 8px 12px;
+    background: var(--surface-soft);
+    color: var(--text-main);
 }
 
 .processing-btn.primary {
