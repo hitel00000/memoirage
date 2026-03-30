@@ -3,12 +3,24 @@
 Memoirage is an offline-first PWA for capturing and organizing personal notes.
 The app runs as a single-page application (SPA) with History API routing.
 
+## Project Context
+
+- Canonical execution context: `CONTEXT.md`
+- Initial design archive: `CONTEXT.orig.md`
+- If they conflict, use `CONTEXT.md` for implementation decisions
+
 ## Architecture
 
-- Runtime: static hosting friendly (no dedicated API server)
-- Storage: IndexedDB by default (`db.js`)
-- Optional storage extension: Firestore mode in `db.js`
-- Frontend: SPA shell (`index.html`) + route logic (`app.js`) + styles (`app.css`)
+- Runtime: serverless static app (no dedicated API server)
+- App model: SPA + History API routes
+- Storage: IndexedDB by default via `db.js`
+- Optional extension: Firestore adapter in `db.js`
+- Frontend: `index.html` + `app.js` + `app.css`
+
+Decision boundary:
+- Previous Node/Express + SQLite + REST design is treated as historical context
+- Current runtime contract is the client data API exported from `db.js`
+- Offline-first usage must work without backend infrastructure
 
 ## Routes
 
@@ -22,6 +34,8 @@ Static-host fallback:
 - `404.html` redirects unknown paths to `index.html?route=...`
 - `app.js` restores route from query and normalizes base path for both root and subpath deployments
 - `capture/`, `processing/`, `storage/` route entry pages redirect to SPA shell (for simple static servers like `python -m http.server`)
+
+## Product Flow
 
 Processing behavior:
 - shows both `inbox` and `processing` notes
@@ -50,12 +64,20 @@ Responsive layout behavior:
 - Processing page switches to stacked layout on narrow screens
 - Storage page switches from 3-column desktop grid to stacked mobile sections (list -> graph -> detail)
 
+## Domain Model (Current)
+
+- Primary entities: `notes`, `links`, `evolutions`
+- Note lifecycle: `inbox` -> `processing` -> `done` -> `deleted` (soft delete)
+- IndexedDB schema version: `2`
+- Migration support: legacy link-type remapping (`v1 -> v2`)
+
 ## Repository Layout
 
 ```text
 memoirage/
 |- 404.html
 |- CONTEXT.md
+|- CONTEXT.orig.md
 |- README.md
 |- app.css
 |- app.js
@@ -105,6 +127,7 @@ Public API:
 - `manifest.json` uses relative URLs
 - `sw.js` precaches SPA assets and fallback page (`memoirage-static-v9`)
 - Service worker is registered by `app.js`
+- Core behavior must remain usable in IndexedDB-only mode
 
 ## GitHub Pages
 
@@ -114,8 +137,25 @@ Public API:
 4. Open published URL:
 - `https://<username>.github.io/<repo-name>/`
 
-## Next Improvements
+## Roadmap Priorities
 
+P1 (current focus):
 - Improve graph layout quality for larger note sets
-- Add cache update prompt UX
-- Expand Firestore setup guide and auth examples
+- Add app update prompt UX for service worker cache updates
+- Keep Firestore mode optional and documented
+
+P2:
+- Improve tag/search ergonomics in UI and `db.js` usage patterns
+
+P3:
+- Add attachments and cluster/membership model incrementally
+
+P4:
+- Add optional AI refine/merge support with graceful fallback
+
+## Feature Acceptance Rule
+
+Every new feature should satisfy all:
+- Works in offline-first IndexedDB mode
+- Does not require backend infrastructure
+- Fits current SPA + `db.js` runtime contract

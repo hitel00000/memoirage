@@ -1,96 +1,105 @@
 # Memoirage Context Snapshot (2026-03-30)
 
-## Product stance
+## Canonical context
 
-- Serverless runtime: static files only
-- Offline-first default: IndexedDB
-- Deploy target: static hosting, including GitHub Pages
+- This file (`CONTEXT.md`) is the canonical execution context for the current app.
+- `CONTEXT.orig.md` is preserved as an archive of the initial server/API-oriented design.
+- If there is a conflict between the two, this file wins for implementation decisions.
 
-## Current runtime model
+## Architecture decisions (fixed for now)
 
-Memoirage uses a single-page app shell:
+- Runtime: serverless static app (no dedicated backend server)
+- App model: SPA with History API routing
+- Data model: offline-first
+  - default store: IndexedDB
+  - optional extension: Firestore adapter in `db.js`
+- Deploy target: static hosting (including GitHub Pages)
+
+## Decision record: why this shape
+
+Initial design assumed Node/Express + SQLite + REST endpoints.
+Current product direction intentionally moved to a static SPA to reduce operational complexity and keep local-first behavior as the default.
+
+This means:
+- REST endpoints are treated as a historical design artifact, not the current runtime contract.
+- The runtime contract is the client data API exported by `db.js`.
+- Firestore remains optional and must not become mandatory for core usage.
+
+## Product structure (3-layer intent retained)
+
+- `capture` layer: frictionless input, minimal judgment
+- `processing` layer: review/refine/relate notes
+- `storage` layer: curated done notes + relationship exploration
+
+Current routes:
+- `/`
+- `/capture`
+- `/processing`
+- `/storage`
+
+## Runtime model
+
+Core files:
 - `index.html`: SPA entry
-- `app.js`: route handling + feature logic
-- `app.css`: shared SPA styles
-- `db.js`: storage abstraction
+- `app.js`: routing + feature UI logic
+- `app.css`: shared styles
+- `db.js`: storage abstraction (`IndexedDBStore`, optional `FirestoreStore`)
+- `sw.js`: service worker cache/offline behavior
 
-Current relationship model:
-- `links`: directional semantic connections (`derive`, `contradict`, `support`, `related`)
-- `evolutions`: directional time/change transitions (`extends`, `shrinks`, `decay`)
+Routing/hosting behavior:
+- `404.html` recovers static-host deep links via `?route=`
+- route entry pages (`capture/`, `processing/`, `storage/`) redirect into SPA shell
+- base path normalization supports root + subpath deployments
 
-Routing model:
-- History API routes: `/`, `/capture`, `/processing`, `/storage`
-- `404.html` provides static-host fallback and route recovery via `?route=`
-- `app.js` normalizes base path from current URL so routing works in root and GitHub Pages subpath deployments
-- route entry pages (`capture/`, `processing/`, `storage/`) redirect into SPA shell for local static servers
+## Domain model (current)
 
-## Repository layout
+Primary entities in production:
+- `notes`
+- `links` (`derive`, `contradict`, `support`, `related`)
+- `evolutions` (`extends`, `shrinks`, `decay`)
 
-```text
-memoirage/
-|- 404.html
-|- app.css
-|- app.js
-|- capture/
-|- db.js
-|- index.html
-|- manifest.json
-|- processing/
-|- storage/
-|- sw.js
-|- favicon.svg
-|- icon-192.png
-`- icon-512.png
-```
+Status lifecycle:
+- `inbox` -> `processing` -> `done`
+- soft delete: `deleted` with `deleted_at`
 
-## Feature flow
+Current IndexedDB details:
+- schema version: `2`
+- migration `v1 -> v2`: legacy link type normalization
 
-1. Home (`/`)
-- dashboard + quick navigation
-- workspace note counters
+## Scope boundaries
 
-2. Capture (`/capture`)
-- quick note creation
-- save into `status: inbox`
+In-scope now:
+- robust capture/processing/storage flow
+- relationship editing (links + evolutions)
+- graph readability and usability
+- PWA stability and update UX
 
-3. Processing (`/processing`)
-- review both `inbox` and `processing` notes
-- clear in-UI explanation of `inbox` vs `processing`
-- toggle note status between `inbox` and `processing`
-- edit note content directly
-- prepare/delete links before done state
-- prepare/delete evolutions before done state
-- move to `done`
-- soft delete notes
-- responsive layout stacks list/detail sections on narrow screens
+Out-of-scope for now (deferred):
+- backend REST server resurrection
+- mandatory cloud sync
 
-4. Storage (`/storage`)
-- list done notes
-- SVG graph rendering of both links and evolutions
-- force-directed node layout with cached positions
-- add links/evolutions with type dropdown + note text search
-- delete links, evolutions, and notes
-- responsive layout switches from 3-column desktop grid to stacked mobile sections
+## Roadmap by priority
 
-## Data model notes
+P1 (stabilize current core):
+- improve graph readability for larger datasets
+- add app update notification UX for new service worker cache versions
+- keep Firestore mode optional and documented
 
-- IndexedDB version is `2`
-- Stores: `notes`, `links`, `evolutions`
-- Migration (`v1 -> v2`) remaps old link types:
-  - `supports -> support`
-  - `contrasts -> contradict`
-  - `depends_on -> derive`
-  - `duplicates -> related`
-- Firestore mode mirrors the same `links` + `evolutions` API surface
+P2 (light model expansion):
+- strengthen tag/search workflow (still local-first)
+- tighten filtering and retrieval ergonomics in `db.js` and UI
 
-## PWA alignment
+P3 (advanced structure):
+- attachments model
+- cluster/membership model (hidden by default, progressive exposure)
 
-- `manifest.json` is configured for SPA start (`./`)
-- `sw.js` precaches SPA files and fallback page (cache name: `memoirage-static-v9`)
-- app registers service worker from `app.js`
+P4 (assistive intelligence):
+- AI refine/merge as optional capability, not a hard dependency
+- keep graceful fallback when model/API is unavailable
 
-## Current priorities
+## Working rule for new features
 
-- Improve graph readability for larger datasets
-- Add app update notification UX for new cache versions
-- Keep Firestore mode optional and documented
+Any new feature should satisfy all three:
+- works offline in IndexedDB-first mode
+- does not require backend infrastructure
+- can be expressed through current SPA + `db.js` contracts
