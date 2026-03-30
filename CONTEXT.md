@@ -109,7 +109,7 @@ Next:
 - [x] Refine data retrieval ergonomics in `db.js` for common filter patterns
 
 Later:
-- [ ] Add attachments model incrementally without breaking offline-first flow
+- [x] Add attachments model incrementally without breaking offline-first flow
 - [ ] Introduce cluster/membership model behind a hidden/advanced UI gate
 - [ ] Add optional AI refine/merge path with graceful fallback and no hard dependency
 

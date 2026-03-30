@@ -199,6 +199,27 @@ function renderTagChips(note, max = 3) {
   return `<div class="note-tag-row">${chips}${extra > 0 ? `<span class="note-tag-chip muted">+${extra}</span>` : ''}</div>`;
 }
 
+function isValidHttpUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function getNoteAttachments(note) {
+  if (!note || !Array.isArray(note.attachments)) return [];
+  return note.attachments
+    .filter((a) => a && typeof a.url === 'string' && isValidHttpUrl(a.url))
+    .map((a) => ({
+      id: String(a.id || generateId()),
+      url: String(a.url),
+      label: String(a.label || '').trim(),
+      created_at: a.created_at || new Date().toISOString()
+    }));
+}
+
 function createSvgEl(tag, attrs = {}) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
@@ -511,6 +532,7 @@ function renderProcessingDetail() {
   const toggleLabel = status === 'processing' ? 'Move back to Inbox' : 'Start Processing';
   const relatedLinks = processingState.links.filter(l => l.source_id === selected.id || l.target_id === selected.id);
   const relatedEvos = processingState.evolutions.filter(e => e.source_id === selected.id || e.target_id === selected.id);
+  const attachments = getNoteAttachments(selected);
 
   const targetOptions = processingState.allNotes
     .filter(n => n.id !== selected.id)
@@ -531,6 +553,14 @@ function renderProcessingDetail() {
     <div class="processing-btn-row">
       <button class="processing-btn primary" id="toggleProcessingBtn">${escapeHtml(toggleLabel)}</button>
       <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
+    </div>
+
+    <h3 class="storage-section-title">Attachments <span style="font-size:11px;font-weight:400;opacity:.7">(${attachments.length})</span></h3>
+    <div id="processingAttachments"></div>
+    <div class="storage-link-form">
+      <input id="pAttachmentUrl" class="storage-input" placeholder="https://example.com/article">
+      <input id="pAttachmentLabel" class="storage-input" placeholder="Label (optional)">
+      <button id="pAddAttachmentBtn" class="storage-btn primary">Add Link</button>
     </div>
 
     <h3 class="storage-section-title">Add Link <span style="font-size:11px;font-weight:400;opacity:.7">(개념 간 관계)</span></h3>
@@ -555,6 +585,7 @@ function renderProcessingDetail() {
 
   renderProcessingLinks(relatedLinks, selected.id);
   renderProcessingEvolutions(relatedEvos, selected.id);
+  renderProcessingAttachments(selected.id);
 
   document.getElementById('saveProcessingNoteBtn').addEventListener('click', async () => {
     const content = document.getElementById('processingContent').value.trim();
@@ -591,6 +622,10 @@ function renderProcessingDetail() {
 
   document.getElementById('pAddEvoBtn').addEventListener('click', async () => {
     await addProcessingEvolution(selected.id);
+  });
+
+  document.getElementById('pAddAttachmentBtn').addEventListener('click', async () => {
+    await addProcessingAttachment(selected.id);
   });
 }
 
@@ -644,6 +679,61 @@ function renderProcessingEvolutions(evos, noteId) {
       await reloadProcessingAndSelect(noteId);
     });
   });
+}
+
+function renderProcessingAttachments(noteId) {
+  const container = document.getElementById('processingAttachments');
+  if (!container) return;
+  const note = processingState.notes.find((n) => n.id === noteId);
+  const attachments = getNoteAttachments(note);
+  if (!attachments.length) {
+    container.innerHTML = '<div class="storage-empty" style="padding:8px 0">No attachments.</div>';
+    return;
+  }
+  container.innerHTML = attachments.map((a) => `
+    <div class="attachment-row">
+      <a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.label || a.url)}</a>
+      <button class="storage-link-remove" data-aid="${a.id}">Delete</button>
+    </div>`).join('');
+
+  container.querySelectorAll('[data-aid]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const current = processingState.notes.find((n) => n.id === noteId);
+      if (!current) return;
+      const next = getNoteAttachments(current).filter((a) => a.id !== btn.dataset.aid);
+      await updateNote(noteId, { attachments: next });
+      await reloadProcessingAndSelect(noteId);
+      showStatus('processingStatus', 'Attachment deleted.', 'success');
+    });
+  });
+}
+
+async function addProcessingAttachment(noteId) {
+  const urlInput = document.getElementById('pAttachmentUrl');
+  const labelInput = document.getElementById('pAttachmentLabel');
+  if (!urlInput || !labelInput) return;
+  const url = urlInput.value.trim();
+  const label = labelInput.value.trim();
+  if (!isValidHttpUrl(url)) {
+    showStatus('processingStatus', 'Please enter a valid http(s) URL.', 'error');
+    return;
+  }
+  const note = processingState.notes.find((n) => n.id === noteId);
+  if (!note) return;
+  const attachments = getNoteAttachments(note);
+  if (attachments.some((a) => a.url === url)) {
+    showStatus('processingStatus', 'Same attachment already exists.', 'error');
+    return;
+  }
+  attachments.push({
+    id: generateId(),
+    url,
+    label,
+    created_at: new Date().toISOString()
+  });
+  await updateNote(noteId, { attachments });
+  await reloadProcessingAndSelect(noteId);
+  showStatus('processingStatus', 'Attachment added.', 'success');
 }
 
 function findNoteByQuery(noteId, query, noteList) {
@@ -1044,6 +1134,7 @@ function renderStorageDetail() {
 
   const relatedLinks = storageState.links.filter(l => l.source_id === note.id || l.target_id === note.id);
   const relatedEvos = storageState.evolutions.filter(e => e.source_id === note.id || e.target_id === note.id);
+  const attachments = getNoteAttachments(note);
 
   const targetOptions = storageState.notes
     .filter(n => n.id !== note.id)
@@ -1058,6 +1149,12 @@ function renderStorageDetail() {
     <h2 style="margin:0 0 8px;font-size:20px">Note Detail</h2>
     <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted)">Created: ${escapeHtml(new Date(note.created_at).toLocaleString())}</p>
     <div class="storage-note-box">${escapeHtml(note.content || '(No content)')}</div>
+
+    <h3 class="storage-section-title">Attachments <span style="font-size:11px;font-weight:400;opacity:.7">(${attachments.length})</span></h3>
+    <div id="storageAttachments">${attachments.length === 0
+      ? '<div class="storage-empty" style="padding:8px 0">No attachments.</div>'
+      : attachments.map((a) => `<div class="attachment-row"><a class="attachment-link" href="${escapeHtml(a.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(a.label || a.url)}</a></div>`).join('')
+    }</div>
 
     <h3 class="storage-section-title">Links <span style="font-size:11px;font-weight:400;opacity:.7">(${relatedLinks.length})</span></h3>
     <div id="storageLinks"></div>

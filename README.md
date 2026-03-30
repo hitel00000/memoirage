@@ -42,6 +42,7 @@ Processing behavior:
 - explains role difference: `inbox` (unreviewed) vs `processing` (active refinement)
 - allows toggling between `inbox` <-> `processing`
 - supports editing note content directly in processing detail
+- supports adding/removing URL attachments per note (stored in note payload)
 - supports preparing directional links before notes are done
 - supports preparing note evolutions before notes are done
 - allows moving notes to `done`
@@ -177,7 +178,7 @@ P2:
 - Improve tag/search ergonomics in UI and `db.js` usage patterns
 
 P3:
-- Add attachments and cluster/membership model incrementally
+- Add richer attachments and cluster/membership model incrementally
 
 P4:
 - Add optional AI refine/merge support with graceful fallback

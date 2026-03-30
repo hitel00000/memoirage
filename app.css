@@ -661,6 +661,31 @@ h1 {
     background: #fff;
 }
 
+.attachment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: #fff;
+}
+
+.attachment-link {
+    min-width: 0;
+    color: var(--accent);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.attachment-link:hover {
+    text-decoration: underline;
+}
+
 .storage-link-head {
     display: flex;
     align-items: center;
