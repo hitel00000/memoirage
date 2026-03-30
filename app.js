@@ -138,6 +138,10 @@ function trimText(text, max = 42) {
   return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
+function firstLineText(text) {
+  return String(text || '').split(/\r?\n/, 1)[0].trim();
+}
+
 function normalizeTag(tag) {
   return String(tag || '').trim().toLowerCase().replace(/^#+/, '');
 }
@@ -903,7 +907,12 @@ function renderStorage() {
   root.innerHTML = `
     <div class="storage-wrap">
       <aside class="storage-panel storage-left">
-        <h2 class="storage-title">Done Notes${uiState.advancedMode ? ' <span class="advanced-badge">Advanced</span>' : ''}</h2>
+        <h2 class="storage-title">
+          <span>Done Notes${uiState.advancedMode ? ' <span class="advanced-badge">Advanced</span>' : ''}</span>
+          <button id="storageAdvancedToggle" class="storage-advanced-toggle" aria-pressed="${uiState.advancedMode ? 'true' : 'false'}">
+            ${uiState.advancedMode ? 'Advanced On' : 'Advanced'}
+          </button>
+        </h2>
         <div class="list-search-wrap storage-search-wrap">
           <input id="storageSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:done" value="${escapeHtml(storageState.query)}" />
           <div id="storageSearchMeta" class="list-search-meta"></div>
@@ -924,6 +933,13 @@ function renderStorage() {
       storageState.query = e.target.value;
       renderStorageList();
       renderStorageDetail();
+    });
+  }
+  const advancedToggle = document.getElementById('storageAdvancedToggle');
+  if (advancedToggle) {
+    advancedToggle.addEventListener('click', () => {
+      setAdvancedMode(!uiState.advancedMode);
+      renderStorage();
     });
   }
   renderStorageList();
@@ -1076,6 +1092,13 @@ function renderStorageGraph() {
   const selectedId = storageState.selectedNoteId;
   const edgeTotal = storageState.links.length + storageState.evolutions.length;
   const showAllEdgeLabels = edgeTotal <= 18;
+  const clusterCounts = {};
+  storageState.notes.forEach((n) => {
+    const cid = normalizeClusterId(n.cluster_id);
+    if (!cid) return;
+    clusterCounts[cid] = (clusterCounts[cid] || 0) + 1;
+  });
+  const clusterEntries = Object.entries(clusterCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
   const connectedToSelected = new Set();
   if (selectedId) {
@@ -1186,7 +1209,7 @@ function renderStorageGraph() {
     const dimmed = !!selectedId && !selected && !isNeighbor;
     const degree = degreeByNode[note.id] || 0;
     const r = Math.min(20, (selected ? 16 : 12) + Math.min(6, degree * 0.6));
-    const clusterId = uiState.advancedMode ? normalizeClusterId(note.cluster_id) : null;
+    const clusterId = normalizeClusterId(note.cluster_id);
     const clusterHue = clusterId ? getClusterHue(clusterId) : null;
     const fillColor = clusterHue === null ? null : `hsl(${clusterHue} 70% ${selected ? 48 : 66}%)`;
     const strokeColor = clusterHue === null ? null : `hsl(${clusterHue} 72% ${selected ? 34 : 42}%)`;
@@ -1213,10 +1236,52 @@ function renderStorageGraph() {
         y: pos.y + r + 13,
         class: 'storage-node-label' + (dimmed ? ' muted' : '')
       });
-      text.textContent = trimText(note.content, nodeLabelMax);
+      text.textContent = trimText(firstLineText(note.content), nodeLabelMax);
       svg.appendChild(text);
     }
   });
+
+  if (clusterEntries.length > 0) {
+    const legend = createSvgEl('g', { class: 'storage-cluster-legend' });
+    const maxItems = Math.min(6, clusterEntries.length);
+    const totalRows = maxItems + (clusterEntries.length > maxItems ? 1 : 0);
+    const boxX = 8;
+    const boxY = 8;
+    const rowH = 16;
+    const titleH = 18;
+    const boxW = Math.min(250, Math.max(160, width * 0.42));
+    const boxH = 10 + titleH + totalRows * rowH + 6;
+    legend.appendChild(createSvgEl('rect', {
+      x: boxX, y: boxY, width: boxW, height: boxH, rx: 8, ry: 8, class: 'storage-cluster-legend-bg'
+    }));
+    const title = createSvgEl('text', {
+      x: boxX + 10, y: boxY + 15, class: 'storage-cluster-legend-title'
+    });
+    title.textContent = 'Clusters';
+    legend.appendChild(title);
+
+    for (let i = 0; i < maxItems; i++) {
+      const [cid, count] = clusterEntries[i];
+      const y = boxY + titleH + 8 + i * rowH;
+      const hue = getClusterHue(cid);
+      legend.appendChild(createSvgEl('circle', {
+        cx: boxX + 15, cy: y - 4, r: 4, fill: `hsl(${hue} 70% 58%)`, stroke: `hsl(${hue} 72% 36%)`
+      }));
+      const text = createSvgEl('text', {
+        x: boxX + 24, y, class: 'storage-cluster-legend-item'
+      });
+      text.textContent = `${trimText(cid, 20)} (${count})`;
+      legend.appendChild(text);
+    }
+    if (clusterEntries.length > maxItems) {
+      const more = createSvgEl('text', {
+        x: boxX + 24, y: boxY + titleH + 8 + maxItems * rowH, class: 'storage-cluster-legend-item'
+      });
+      more.textContent = `+${clusterEntries.length - maxItems} more`;
+      legend.appendChild(more);
+    }
+    svg.appendChild(legend);
+  }
 
   panel.appendChild(svg);
 }

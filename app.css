@@ -512,6 +512,10 @@ h1 {
     background: #fff;
     position: sticky;
     top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .advanced-badge {
@@ -525,6 +529,23 @@ h1 {
     color: var(--text-muted);
     background: var(--surface-soft);
     vertical-align: middle;
+}
+
+.storage-advanced-toggle {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-soft);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 8px;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.storage-advanced-toggle[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border) 45%);
+    background: color-mix(in srgb, var(--accent-soft) 75%, var(--surface) 25%);
 }
 
 .storage-search-wrap {
@@ -792,6 +813,23 @@ h1 {
 
 .storage-node-label.muted {
     opacity: 0.5;
+}
+
+.storage-cluster-legend-bg {
+    fill: color-mix(in srgb, var(--surface) 88%, transparent 12%);
+    stroke: color-mix(in srgb, var(--border) 80%, transparent 20%);
+    stroke-width: 1;
+}
+
+.storage-cluster-legend-title {
+    fill: var(--text-main);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.storage-cluster-legend-item {
+    fill: var(--text-muted);
+    font-size: 10px;
 }
 
 /* Theme override: reduce blue fatigue and support light/dark mode */
@@ -1203,6 +1241,15 @@ textarea {
 
     .storage-right {
         padding: 12px;
+    }
+
+    .storage-title {
+        padding: 12px 10px;
+    }
+
+    .storage-advanced-toggle {
+        font-size: 10px;
+        padding: 4px 7px;
     }
 
     .storage-link-form {
