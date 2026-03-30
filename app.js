@@ -15,7 +15,8 @@ const appUpdateState = {
 
 const processingState = {
   notes: [],
-  selectedIndex: -1,
+  selectedNoteId: null,
+  query: '',
   allNotes: [],
   links: [],
   evolutions: []
@@ -26,6 +27,7 @@ const storageState = {
   links: [],
   evolutions: [],
   selectedNoteId: null,
+  query: '',
   graphNodes: null  // force-directed 위치 캐시
 };
 
@@ -114,6 +116,87 @@ function escapeHtml(input) {
 function trimText(text, max = 42) {
   if (!text) return '(No content)';
   return text.length > max ? text.slice(0, max) + '…' : text;
+}
+
+function normalizeTag(tag) {
+  return String(tag || '').trim().toLowerCase().replace(/^#+/, '');
+}
+
+function extractTagsFromText(text) {
+  const src = String(text || '');
+  const tagSet = new Set();
+  const re = /(?:^|\s)#([a-z0-9][a-z0-9_-]{0,39})/gi;
+  let match;
+  while ((match = re.exec(src))) {
+    const tag = normalizeTag(match[1]);
+    if (tag) tagSet.add(tag);
+  }
+  return [...tagSet];
+}
+
+function getNoteTags(note) {
+  const list = [];
+  if (Array.isArray(note && note.tags)) list.push(...note.tags);
+  if (note && note.content) list.push(...extractTagsFromText(note.content));
+  const set = new Set(list.map(normalizeTag).filter(Boolean));
+  return [...set];
+}
+
+function parseSearchQuery(query) {
+  const parsed = { textTerms: [], tagTerms: [], statusTerms: [] };
+  const tokens = String(query || '').trim().split(/\s+/).filter(Boolean);
+  const allowedStatuses = new Set(['inbox', 'processing', 'done', 'deleted']);
+  tokens.forEach((token) => {
+    const low = token.toLowerCase();
+    if (low.startsWith('#')) {
+      const tag = normalizeTag(low);
+      if (tag) parsed.tagTerms.push(tag);
+      return;
+    }
+    if (low.startsWith('tag:')) {
+      const tag = normalizeTag(low.slice(4));
+      if (tag) parsed.tagTerms.push(tag);
+      return;
+    }
+    if (low.startsWith('status:')) {
+      const status = low.slice(7);
+      if (allowedStatuses.has(status)) parsed.statusTerms.push(status);
+      return;
+    }
+    parsed.textTerms.push(low);
+  });
+  parsed.textTerms = [...new Set(parsed.textTerms)];
+  parsed.tagTerms = [...new Set(parsed.tagTerms)];
+  parsed.statusTerms = [...new Set(parsed.statusTerms)];
+  return parsed;
+}
+
+function matchesNoteQuery(note, parsed, statusScope = null) {
+  if (!note) return false;
+  const status = String(note.status || 'inbox').toLowerCase();
+  if (statusScope && !statusScope.has(status)) return false;
+  if (parsed.statusTerms.length && !parsed.statusTerms.includes(status)) return false;
+  const content = String(note.content || '').toLowerCase();
+  if (parsed.textTerms.some((term) => !content.includes(term))) return false;
+  if (parsed.tagTerms.length) {
+    const tags = getNoteTags(note);
+    if (parsed.tagTerms.some((tag) => !tags.includes(tag))) return false;
+  }
+  return true;
+}
+
+function filterNotesByQuery(notes, query, statusScope = null) {
+  const parsed = parseSearchQuery(query);
+  return notes.filter((note) => matchesNoteQuery(note, parsed, statusScope));
+}
+
+function renderTagChips(note, max = 3) {
+  const tags = getNoteTags(note);
+  if (!tags.length) return '';
+  const visible = tags.slice(0, max);
+  const extra = tags.length - visible.length;
+  const chips = visible.map((tag) => `<span class="note-tag-chip">#${escapeHtml(tag)}</span>`).join('');
+  return `<div class="note-tag-row">${chips}${extra > 0 ? `<span class="note-tag-chip muted">+${extra}</span>` : ''}</div>`;
 }
 
 function createSvgEl(tag, attrs = {}) {
@@ -274,7 +357,15 @@ function renderCapture() {
     const btn = document.getElementById('captureSubmit');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      await saveNote({ id: generateId(), type: 'text', content, status: 'inbox', tags: [], created_at: new Date().toISOString(), deleted_at: null });
+      await saveNote({
+        id: generateId(),
+        type: 'text',
+        content,
+        status: 'inbox',
+        tags: extractTagsFromText(content),
+        created_at: new Date().toISOString(),
+        deleted_at: null
+      });
       textarea.value = '';
       showStatus('captureStatus', 'Saved!', 'success');
     } catch (e) {
@@ -304,9 +395,9 @@ async function loadProcessingNotes() {
 async function reloadProcessingAndSelect(noteId = null) {
   await loadProcessingNotes();
   if (noteId) {
-    processingState.selectedIndex = processingState.notes.findIndex((n) => n.id === noteId);
-  } else if (processingState.selectedIndex >= processingState.notes.length) {
-    processingState.selectedIndex = -1;
+    processingState.selectedNoteId = processingState.notes.find((n) => n.id === noteId) ? noteId : null;
+  } else if (processingState.selectedNoteId && !processingState.notes.find((n) => n.id === processingState.selectedNoteId)) {
+    processingState.selectedNoteId = null;
   }
   renderProcessingList();
   renderProcessingDetail();
@@ -337,15 +428,39 @@ function renderProcessingList() {
   const panel = document.getElementById('processingList');
   if (!panel) return;
   if (processingState.notes.length === 0) {
-    panel.innerHTML = '<div style="padding:20px;color:#999;">No notes</div>';
+    panel.innerHTML = '<div class="list-search-wrap"><input id="processingSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:inbox" /></div><div style="padding:20px;color:#999;">No notes</div>';
+    const emptyInput = document.getElementById('processingSearchInput');
+    if (emptyInput) {
+      emptyInput.value = processingState.query || '';
+      emptyInput.addEventListener('input', (e) => { processingState.query = e.target.value; });
+    }
     return;
   }
-  panel.innerHTML = processingState.notes.map((note, idx) => {
-    const sel = idx === processingState.selectedIndex ? ' selected' : '';
-    return `
+  const filtered = filterNotesByQuery(processingState.notes, processingState.query, new Set(['inbox', 'processing']));
+  if (processingState.selectedNoteId && !filtered.find((n) => n.id === processingState.selectedNoteId)) {
+    processingState.selectedNoteId = filtered[0] ? filtered[0].id : null;
+  }
+
+  panel.innerHTML = `
+    <div class="list-search-wrap">
+      <input id="processingSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:inbox" value="${escapeHtml(processingState.query)}" />
+      <div class="list-search-meta">${filtered.length}/${processingState.notes.length} notes</div>
+    </div>
+    <div id="processingListBody"></div>`;
+
+  const body = document.getElementById('processingListBody');
+  if (!body) return;
+  if (filtered.length === 0) {
+    body.innerHTML = '<div style="padding:20px;color:#999;">No matching notes</div>';
+  } else {
+    body.innerHTML = filtered.map((note) => {
+      const sel = note.id === processingState.selectedNoteId ? ' selected' : '';
+      const tagsHtml = renderTagChips(note, 3);
+      return `
       <div class="processing-item${sel}">
-        <div class="processing-item-content" data-action="select" data-idx="${idx}">
+        <div class="processing-item-content" data-action="select" data-id="${note.id}">
           <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
+          ${tagsHtml}
           <div class="processing-item-meta">
             <span class="processing-status-chip ${escapeHtml(note.status || 'inbox')}">${note.status === 'processing' ? 'Processing' : 'Inbox'}</span>
             <span class="processing-item-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</span>
@@ -353,11 +468,21 @@ function renderProcessingList() {
         </div>
         <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">×</button>
       </div>`;
-  }).join('');
+    }).join('');
+  }
+
+  const searchInput = document.getElementById('processingSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      processingState.query = e.target.value;
+      renderProcessingList();
+      renderProcessingDetail();
+    });
+  }
 
   panel.querySelectorAll('[data-action="select"]').forEach((el) => {
     el.addEventListener('click', () => {
-      processingState.selectedIndex = Number(el.dataset.idx);
+      processingState.selectedNoteId = el.dataset.id;
       renderProcessingList();
       renderProcessingDetail();
     });
@@ -370,7 +495,7 @@ function renderProcessingList() {
 function renderProcessingDetail() {
   const panel = document.getElementById('processingDetail');
   if (!panel) return;
-  const selected = processingState.notes[processingState.selectedIndex];
+  const selected = processingState.notes.find((n) => n.id === processingState.selectedNoteId);
   if (!selected) {
     panel.innerHTML = `
       <div class="processing-legend">
@@ -435,7 +560,7 @@ function renderProcessingDetail() {
     const content = document.getElementById('processingContent').value.trim();
     if (!content) { showStatus('processingStatus', 'Content cannot be empty.', 'error'); return; }
     try {
-      await updateNote(selected.id, { content });
+      await updateNote(selected.id, { content, tags: extractTagsFromText(content) });
       await reloadProcessingAndSelect(selected.id);
       showStatus('processingStatus', 'Saved.', 'success');
     } catch (e) { showStatus('processingStatus', 'Save failed: ' + e.message, 'error'); }
@@ -563,7 +688,7 @@ async function deleteProcessingNote(noteId) {
   if (!confirm('Delete this note?')) return;
   try {
     await deleteNote(noteId);
-    processingState.selectedIndex = -1;
+    processingState.selectedNoteId = null;
     await reloadProcessingAndSelect();
   } catch (e) { showStatus('processingStatus', 'Delete failed.', 'error'); }
 }
@@ -595,6 +720,10 @@ function renderStorage() {
     <div class="storage-wrap">
       <aside class="storage-panel storage-left">
         <h2 class="storage-title">Done Notes</h2>
+        <div class="list-search-wrap storage-search-wrap">
+          <input id="storageSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:done" value="${escapeHtml(storageState.query)}" />
+          <div id="storageSearchMeta" class="list-search-meta"></div>
+        </div>
         <div id="storageList"></div>
       </aside>
       <section class="storage-panel storage-center">
@@ -605,6 +734,14 @@ function renderStorage() {
         <div id="storageDetail" class="storage-empty">Select a note from the list or graph.</div>
       </aside>
     </div>`;
+  const searchInput = document.getElementById('storageSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      storageState.query = e.target.value;
+      renderStorageList();
+      renderStorageDetail();
+    });
+  }
   renderStorageList();
   renderStorageGraph();
   renderStorageDetail();
@@ -613,13 +750,24 @@ function renderStorage() {
 function renderStorageList() {
   const panel = document.getElementById('storageList');
   if (!panel) return;
+  const filtered = filterNotesByQuery(storageState.notes, storageState.query, new Set(['done']));
+  const meta = document.getElementById('storageSearchMeta');
+  if (meta) meta.textContent = `${filtered.length}/${storageState.notes.length} notes`;
+  if (storageState.selectedNoteId && !filtered.find((n) => n.id === storageState.selectedNoteId)) {
+    storageState.selectedNoteId = null;
+  }
   if (storageState.notes.length === 0) {
     panel.innerHTML = '<div class="storage-empty">No completed notes yet.</div>';
     return;
   }
-  panel.innerHTML = storageState.notes.map((note) => `
+  if (filtered.length === 0) {
+    panel.innerHTML = '<div class="storage-empty">No matching notes.</div>';
+    return;
+  }
+  panel.innerHTML = filtered.map((note) => `
     <div class="storage-note-item${note.id === storageState.selectedNoteId ? ' selected' : ''}" data-id="${note.id}">
       <div class="storage-note-content">${escapeHtml(trimText(note.content))}</div>
+      ${renderTagChips(note, 3)}
       <div class="storage-note-date">${escapeHtml(new Date(note.created_at).toLocaleString())}</div>
     </div>`).join('');
 

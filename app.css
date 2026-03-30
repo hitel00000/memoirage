@@ -240,6 +240,31 @@ h1 {
     color: #111827;
 }
 
+.list-search-wrap {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 90%, var(--surface-soft) 10%);
+}
+
+.list-search-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-main);
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.list-search-meta {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
 .processing-detail {
     flex: 1;
     padding: 20px;
@@ -290,6 +315,29 @@ h1 {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.note-tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.note-tag-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 1;
+    padding: 4px 7px;
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border) 75%);
+    background: color-mix(in srgb, var(--accent-soft) 65%, var(--surface) 35%);
+    color: var(--text-main);
+}
+
+.note-tag-chip.muted {
+    opacity: 0.75;
 }
 
 .processing-item-date {
@@ -457,6 +505,10 @@ h1 {
     background: #fff;
     position: sticky;
     top: 0;
+}
+
+.storage-search-wrap {
+    top: 46px;
 }
 
 .storage-note-item {

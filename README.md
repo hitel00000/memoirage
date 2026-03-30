@@ -45,6 +45,10 @@ Processing behavior:
 - supports preparing directional links before notes are done
 - supports preparing note evolutions before notes are done
 - allows moving notes to `done`
+- includes fast list filtering with consistent query syntax:
+  - free text: `idea`
+  - tag: `#research` or `tag:research`
+  - status: `status:inbox`, `status:processing`, `status:done`
 
 Connection model:
 - Link types are normalized to: `derive`, `contradict`, `support`, `related`
@@ -59,6 +63,10 @@ Storage graph behavior:
 - renders links and evolutions together in the graph
 - uses force-directed positioning and resets cached node positions when data changes
 - uses different edge styles for links vs evolutions
+
+Tag behavior:
+- tags are auto-extracted from note content hashtags (for example: `#ai`, `#daily-log`)
+- list items surface tag chips so query terms are easier to discover
 
 Responsive layout behavior:
 - Processing page switches to stacked layout on narrow screens

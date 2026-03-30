@@ -105,7 +105,7 @@ Now:
 - [x] Document Firestore optional mode more clearly (setup + limits + when to use)
 
 Next:
-- [ ] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)
+- [x] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)
 - [ ] Refine data retrieval ergonomics in `db.js` for common filter patterns
 
 Later:
