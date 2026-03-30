@@ -115,6 +115,22 @@ Optional: `FirestoreStore`
 - enable with `setConfig({ useFirestore: true })`
 - requires Firebase SDK from host
 
+When to use Firestore mode:
+- Use it only when cross-device sync is needed
+- Keep IndexedDB as the default for offline-first local reliability
+- Treat Firestore as an optional adapter, not a required runtime dependency
+
+Firestore quick setup (host page):
+1. Load Firebase Auth + Firestore SDK before `db.js`
+2. Initialize Firebase app in the host page
+3. Call `setConfig({ useFirestore: true })` before `initDB()`
+4. Ensure anonymous auth is enabled (current implementation signs in anonymously)
+
+Current limitations:
+- This repository does not bundle Firebase SDK by default in `index.html`
+- Firestore mode expects global `firebase` object from the host environment
+- If SDK/auth is unavailable, keep `useFirestore: false` (IndexedDB mode)
+
 Public API:
 - `initDB`, `saveNote`, `getNotes`, `getNoteById`, `updateNote`, `deleteNote`
 - `saveLink`, `getLinks`, `deleteLink`

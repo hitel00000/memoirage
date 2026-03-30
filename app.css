@@ -638,6 +638,7 @@ h1 {
     fill: #8fb2ff;
     stroke: #5f86de;
     stroke-width: 2;
+    transition: opacity 0.18s ease;
 }
 
 .storage-node.selected {
@@ -646,16 +647,34 @@ h1 {
     stroke-width: 3;
 }
 
+.storage-node.dimmed {
+    opacity: 0.4;
+}
+
 .storage-edge {
     stroke: #8b95a7;
     stroke-width: 1.6;
     opacity: 0.92;
+    transition: opacity 0.18s ease;
+}
+
+.storage-edge.muted {
+    opacity: 0.22;
 }
 
 .storage-edge-label {
     font-size: 10px;
     fill: var(--graph-edge-label);
     pointer-events: none;
+    paint-order: stroke;
+    stroke: color-mix(in srgb, var(--surface) 85%, transparent 15%);
+    stroke-width: 2.2px;
+    stroke-linejoin: round;
+    font-weight: 620;
+}
+
+.storage-edge-label.muted {
+    opacity: 0.45;
 }
 
 .processing-help-text {
@@ -669,6 +688,13 @@ h1 {
     fill: var(--graph-node-label);
     pointer-events: none;
     text-anchor: middle;
+    paint-order: stroke;
+    stroke: color-mix(in srgb, var(--surface) 90%, transparent 10%);
+    stroke-width: 2px;
+}
+
+.storage-node-label.muted {
+    opacity: 0.5;
 }
 
 /* Theme override: reduce blue fatigue and support light/dark mode */
@@ -920,6 +946,63 @@ textarea {
     stroke: var(--accent-strong);
 }
 
+.app-update-banner {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%) translateY(130%);
+    background: color-mix(in srgb, var(--surface) 82%, var(--accent-soft) 18%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    z-index: 1200;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.app-update-banner.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.app-update-text {
+    font-size: 13px;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.app-update-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.app-update-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: var(--surface);
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.app-update-btn.primary {
+    border-color: transparent;
+    background: var(--accent);
+    color: #fff;
+}
+
+.app-update-btn.primary:hover {
+    background: var(--accent-strong);
+}
+
 *,
 *::before,
 *::after {
@@ -1034,6 +1117,24 @@ textarea {
     .storage-link-form .storage-btn {
         width: 100%;
         flex: 1 1 100%;
+    }
+
+    .app-update-banner {
+        width: calc(100% - 18px);
+        left: 9px;
+        right: 9px;
+        bottom: 10px;
+        transform: translateY(130%);
+        justify-content: space-between;
+    }
+
+    .app-update-banner.show {
+        transform: translateY(0);
+    }
+
+    .app-update-text {
+        white-space: normal;
+        font-size: 12px;
     }
 }
 

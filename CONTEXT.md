@@ -100,9 +100,9 @@ P4 (assistive intelligence):
 ## Action checklist
 
 Now:
-- [ ] Improve storage graph readability for larger datasets (layout, overlap, label legibility)
-- [ ] Add service worker update notification UX (new cache available -> prompt to refresh)
-- [ ] Document Firestore optional mode more clearly (setup + limits + when to use)
+- [x] Improve storage graph readability for larger datasets (layout, overlap, label legibility)
+- [x] Add service worker update notification UX (new cache available -> prompt to refresh)
+- [x] Document Firestore optional mode more clearly (setup + limits + when to use)
 
 Next:
 - [ ] Strengthen tag/search workflow in UI (fast filter + consistent query behavior)

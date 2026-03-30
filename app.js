@@ -7,6 +7,11 @@ const routes = [
 
 let deferredPrompt = null;
 let statsIntervalId = null;
+const appUpdateState = {
+  registration: null,
+  waitingWorker: null,
+  controllerChanged: false
+};
 
 const processingState = {
   notes: [],
@@ -123,6 +128,66 @@ function showStatus(elId, message, type, duration = 2500) {
   el.textContent = message;
   el.className = el.className.replace(/\bshow\b|\bsuccess\b|\berror\b/g, '').trim() + ` show ${type}`;
   setTimeout(() => { el.className = el.className.replace(/\bshow\b|\bsuccess\b|\berror\b/g, '').trim(); }, duration);
+}
+
+function ensureUpdateBanner() {
+  let banner = document.getElementById('appUpdateBanner');
+  if (banner) return banner;
+
+  banner = document.createElement('div');
+  banner.id = 'appUpdateBanner';
+  banner.className = 'app-update-banner';
+  banner.innerHTML = `
+    <div class="app-update-text">A new version is ready.</div>
+    <div class="app-update-actions">
+      <button id="appUpdateRefreshBtn" class="app-update-btn primary">Refresh</button>
+      <button id="appUpdateLaterBtn" class="app-update-btn">Later</button>
+    </div>`;
+  document.body.appendChild(banner);
+
+  document.getElementById('appUpdateRefreshBtn').addEventListener('click', () => {
+    const waiting = appUpdateState.waitingWorker || (appUpdateState.registration && appUpdateState.registration.waiting);
+    if (waiting) {
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+      return;
+    }
+    window.location.reload();
+  });
+  document.getElementById('appUpdateLaterBtn').addEventListener('click', () => {
+    banner.classList.remove('show');
+  });
+
+  return banner;
+}
+
+function showUpdateBanner() {
+  ensureUpdateBanner().classList.add('show');
+}
+
+function wireServiceWorkerUpdates(registration) {
+  appUpdateState.registration = registration;
+
+  if (registration.waiting) {
+    appUpdateState.waitingWorker = registration.waiting;
+    showUpdateBanner();
+  }
+
+  registration.addEventListener('updatefound', () => {
+    const worker = registration.installing;
+    if (!worker) return;
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        appUpdateState.waitingWorker = registration.waiting || worker;
+        showUpdateBanner();
+      }
+    });
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (appUpdateState.controllerChanged) return;
+    appUpdateState.controllerChanged = true;
+    window.location.reload();
+  });
 }
 
 // ── NAV ──
@@ -521,7 +586,7 @@ async function loadStorageData() {
   if (storageState.selectedNoteId && !doneIds.has(storageState.selectedNoteId)) {
     storageState.selectedNoteId = null;
   }
-  storageState.graphNodes = null; // 데이터 바뀌면 위치 초기화
+  storageState.graphNodes = null;
 }
 
 function renderStorage() {
@@ -595,8 +660,9 @@ function runForceLayout(nodes, width, height, iterations = 80) {
   ];
 
   const k = Math.sqrt((width * height) / Math.max(noteIds.length, 1));
-  const repulsion = k * 1.4;
-  const attraction = k * 0.6;
+  const repulsion = k * 1.3;
+  const targetDistance = Math.max(72, Math.min(150, k * 1.2));
+  const collisionDistance = Math.max(30, Math.min(56, k * 0.65));
 
   for (let iter = 0; iter < iterations; iter++) {
     const cooling = 1 - iter / iterations;
@@ -620,11 +686,24 @@ function runForceLayout(nodes, width, height, iterations = 80) {
       if (!a || !b) return;
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-      const force = (dist * dist) / attraction;
-      const fx = (dx / dist) * force * 0.5, fy = (dy / dist) * force * 0.5;
+      const force = (dist - targetDistance) * 0.08;
+      const fx = (dx / dist) * force, fy = (dy / dist) * force;
       a.vx += fx; a.vy += fy;
       b.vx -= fx; b.vy -= fy;
     });
+
+    for (let i = 0; i < noteIds.length; i++) {
+      for (let j = i + 1; j < noteIds.length; j++) {
+        const a = nodes[noteIds[i]], b = nodes[noteIds[j]];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+        if (dist >= collisionDistance) continue;
+        const push = (collisionDistance - dist) * 0.22;
+        const fx = (dx / dist) * push, fy = (dy / dist) * push;
+        a.vx += fx; a.vy += fy;
+        b.vx -= fx; b.vy -= fy;
+      }
+    }
 
     // 위치 업데이트 + 경계 처리
     const maxDisp = 30 * cooling + 2;
@@ -655,9 +734,52 @@ function renderStorageGraph() {
   const height = Math.max(260, panel.clientHeight || 260);
 
   const nodes = initGraphPositions(width, height);
-  runForceLayout(nodes, width, height, storageState.notes.length > 1 ? 80 : 0);
+  runForceLayout(nodes, width, height, storageState.notes.length > 1 ? Math.min(180, 72 + storageState.notes.length * 2) : 0);
 
   const svg = createSvgEl('svg', { class: 'storage-graph-svg', viewBox: `0 0 ${width} ${height}` });
+  const selectedId = storageState.selectedNoteId;
+  const edgeTotal = storageState.links.length + storageState.evolutions.length;
+  const showAllEdgeLabels = edgeTotal <= 18;
+
+  const connectedToSelected = new Set();
+  if (selectedId) {
+    storageState.links.forEach((l) => {
+      if (l.source_id === selectedId) connectedToSelected.add(l.target_id);
+      if (l.target_id === selectedId) connectedToSelected.add(l.source_id);
+    });
+    storageState.evolutions.forEach((e) => {
+      if (e.source_id === selectedId) connectedToSelected.add(e.target_id);
+      if (e.target_id === selectedId) connectedToSelected.add(e.source_id);
+    });
+  }
+
+  const degreeByNode = {};
+  storageState.notes.forEach((n) => { degreeByNode[n.id] = 0; });
+  [...storageState.links, ...storageState.evolutions].forEach((e) => {
+    if (degreeByNode[e.source_id] !== undefined) degreeByNode[e.source_id] += 1;
+    if (degreeByNode[e.target_id] !== undefined) degreeByNode[e.target_id] += 1;
+  });
+
+  const edgeSlotMap = {};
+  const getEdgeSlot = (a, b) => {
+    const key = [a, b].sort().join('::');
+    edgeSlotMap[key] = (edgeSlotMap[key] || 0) + 1;
+    return edgeSlotMap[key];
+  };
+
+  const makeEdgeLabelPosition = (from, to, slot) => {
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    const sign = slot % 2 === 0 ? -1 : 1;
+    const band = Math.floor((slot - 1) / 2);
+    const offset = sign * (6 + band * 8);
+    return { x: midX + nx * offset, y: midY + ny * offset };
+  };
 
   // defs: 화살표 마커 두 종류
   const defs = createSvgEl('defs');
@@ -675,30 +797,65 @@ function renderStorageGraph() {
   storageState.links.forEach((link) => {
     const from = nodes[link.source_id], to = nodes[link.target_id];
     if (!from || !to) return;
-    const line = createSvgEl('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: 'storage-edge', 'marker-end': 'url(#arrow-link)' });
+    const highlighted = !selectedId || link.source_id === selectedId || link.target_id === selectedId;
+    const line = createSvgEl('line', {
+      x1: from.x,
+      y1: from.y,
+      x2: to.x,
+      y2: to.y,
+      class: 'storage-edge' + (highlighted ? '' : ' muted'),
+      'marker-end': 'url(#arrow-link)'
+    });
     svg.appendChild(line);
-    const label = createSvgEl('text', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 5, class: 'storage-edge-label' });
-    label.textContent = link.type || 'related';
-    svg.appendChild(label);
+    if (showAllEdgeLabels || highlighted) {
+      const slot = getEdgeSlot(link.source_id, link.target_id);
+      const pos = makeEdgeLabelPosition(from, to, slot);
+      const label = createSvgEl('text', { x: pos.x, y: pos.y, class: 'storage-edge-label' + (highlighted ? '' : ' muted') });
+      label.textContent = link.type || 'related';
+      svg.appendChild(label);
+    }
   });
 
   // NoteEvolution 엣지 (점선 + 보라색)
   storageState.evolutions.forEach((evo) => {
     const from = nodes[evo.source_id], to = nodes[evo.target_id];
     if (!from || !to) return;
-    const line = createSvgEl('line', { x1: from.x, y1: from.y, x2: to.x, y2: to.y, class: 'storage-edge evo-edge', 'marker-end': 'url(#arrow-evo)', 'stroke-dasharray': '5 3' });
+    const highlighted = !selectedId || evo.source_id === selectedId || evo.target_id === selectedId;
+    const line = createSvgEl('line', {
+      x1: from.x,
+      y1: from.y,
+      x2: to.x,
+      y2: to.y,
+      class: 'storage-edge evo-edge' + (highlighted ? '' : ' muted'),
+      'marker-end': 'url(#arrow-evo)',
+      'stroke-dasharray': '5 3'
+    });
     svg.appendChild(line);
-    const label = createSvgEl('text', { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - 5, class: 'storage-edge-label evo-label' });
-    label.textContent = evo.evolution_type;
-    svg.appendChild(label);
+    if (showAllEdgeLabels || highlighted) {
+      const slot = getEdgeSlot(evo.source_id, evo.target_id);
+      const pos = makeEdgeLabelPosition(from, to, slot);
+      const label = createSvgEl('text', { x: pos.x, y: pos.y, class: 'storage-edge-label evo-label' + (highlighted ? '' : ' muted') });
+      label.textContent = evo.evolution_type;
+      svg.appendChild(label);
+    }
   });
 
   // 노드
+  const denseGraph = storageState.notes.length > 26;
+  const nodeLabelMax = storageState.notes.length > 30 ? 10 : (storageState.notes.length > 16 ? 12 : 14);
   storageState.notes.forEach((note) => {
     const pos = nodes[note.id];
     const selected = note.id === storageState.selectedNoteId;
-    const r = selected ? 18 : 14;
-    const circle = createSvgEl('circle', { cx: pos.x, cy: pos.y, r, class: 'storage-node' + (selected ? ' selected' : '') });
+    const isNeighbor = selectedId ? connectedToSelected.has(note.id) : false;
+    const dimmed = !!selectedId && !selected && !isNeighbor;
+    const degree = degreeByNode[note.id] || 0;
+    const r = Math.min(20, (selected ? 16 : 12) + Math.min(6, degree * 0.6));
+    const circle = createSvgEl('circle', {
+      cx: pos.x,
+      cy: pos.y,
+      r,
+      class: 'storage-node' + (selected ? ' selected' : '') + (dimmed ? ' dimmed' : '')
+    });
     circle.addEventListener('click', () => {
       storageState.selectedNoteId = note.id;
       renderStorageList();
@@ -707,9 +864,16 @@ function renderStorageGraph() {
     });
     svg.appendChild(circle);
 
-    const text = createSvgEl('text', { x: pos.x, y: pos.y + r + 13, class: 'storage-node-label' });
-    text.textContent = trimText(note.content, 14);
-    svg.appendChild(text);
+    const showNodeLabel = !denseGraph || selected || isNeighbor;
+    if (showNodeLabel) {
+      const text = createSvgEl('text', {
+        x: pos.x,
+        y: pos.y + r + 13,
+        class: 'storage-node-label' + (dimmed ? ' muted' : '')
+      });
+      text.textContent = trimText(note.content, nodeLabelMax);
+      svg.appendChild(text);
+    }
   });
 
   panel.appendChild(svg);
@@ -896,7 +1060,7 @@ async function initApp() {
   window.addEventListener('popstate', () => renderRoute());
   window.addEventListener('resize', () => {
     if (getRouteKeyFromLocation() === 'storage') {
-      storageState.graphNodes = null; // 리사이즈 시 위치 재계산
+      storageState.graphNodes = null;
       renderStorageGraph();
     }
   });
@@ -907,7 +1071,12 @@ async function initApp() {
   });
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(e => console.error('SW registration failed:', e));
+      navigator.serviceWorker.register('./sw.js')
+        .then((registration) => {
+          wireServiceWorkerUpdates(registration);
+          setInterval(() => registration.update().catch(() => {}), 60 * 60 * 1000);
+        })
+        .catch(e => console.error('SW registration failed:', e));
     });
   }
 }
