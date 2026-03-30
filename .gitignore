@@ -21,3 +21,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# 로컬 도구 임시 파일
+.codex
