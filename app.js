@@ -1196,7 +1196,7 @@ function runForceLayout(nodes, width, height, iterations = 80) {
 
     // 위치 업데이트 + 경계 처리
     const maxDisp = 30 * cooling + 2;
-    const pad = 40;
+    const pad = 200;
     noteIds.forEach(id => {
       const n = nodes[id];
       const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy) || 1;
