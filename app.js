@@ -1103,10 +1103,20 @@ function runForceLayout(nodes, width, height, iterations = 80) {
     ...storageState.evolutions.map(e => ({ source: e.source_id, target: e.target_id }))
   ];
 
+  // 클러스터별 노드 그룹
+  const clusterGroups = {};
+  storageState.notes.forEach((note) => {
+    const cid = normalizeClusterId(note.cluster_id);
+    if (!cid) return;
+    if (!clusterGroups[cid]) clusterGroups[cid] = [];
+    clusterGroups[cid].push(note.id);
+  });
+
   const k = Math.sqrt((width * height) / Math.max(noteIds.length, 1));
   const repulsion = k * 1.3;
   const targetDistance = Math.max(72, Math.min(150, k * 1.2));
   const collisionDistance = Math.max(30, Math.min(56, k * 0.65));
+  const clusterTargetDist = Math.max(50, Math.min(90, k * 0.8));
 
   for (let iter = 0; iter < iterations; iter++) {
     const cooling = 1 - iter / iterations;
@@ -1136,6 +1146,25 @@ function runForceLayout(nodes, width, height, iterations = 80) {
       b.vx -= fx; b.vy -= fy;
     });
 
+    // 클러스터 인력 — 같은 클러스터 노드끼리 가까이 당긴다
+    Object.values(clusterGroups).forEach((ids) => {
+      if (ids.length < 2) return;
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const a = nodes[ids[i]], b = nodes[ids[j]];
+          if (!a || !b) continue;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          if (dist <= clusterTargetDist) continue;
+          const force = (dist - clusterTargetDist) * 0.12;
+          const fx = (dx / dist) * force, fy = (dy / dist) * force;
+          a.vx += fx; a.vy += fy;
+          b.vx -= fx; b.vy -= fy;
+        }
+      }
+    });
+
+    // 충돌 방지
     for (let i = 0; i < noteIds.length; i++) {
       for (let j = i + 1; j < noteIds.length; j++) {
         const a = nodes[noteIds[i]], b = nodes[noteIds[j]];
@@ -1165,6 +1194,119 @@ function runForceLayout(nodes, width, height, iterations = 80) {
   }
 }
 
+// ── convex hull (Gift wrapping) ──
+
+function computeConvexHull(points) {
+  if (points.length < 2) return points;
+  if (points.length === 2) return points;
+
+  // 가장 왼쪽 점 찾기
+  let start = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].x < points[start].x) start = i;
+  }
+
+  const hull = [];
+  let current = start;
+  do {
+    hull.push(points[current]);
+    let next = (current + 1) % points.length;
+    for (let i = 0; i < points.length; i++) {
+      const cross = (points[next].x - points[current].x) * (points[i].y - points[current].y)
+                  - (points[next].y - points[current].y) * (points[i].x - points[current].x);
+      if (cross < 0) next = i;
+    }
+    current = next;
+  } while (current !== start && hull.length <= points.length);
+
+  return hull;
+}
+
+// hull 점들을 padding만큼 바깥으로 확장한 부드러운 path 생성
+function hullToRoundedPath(hull, padding) {
+  if (hull.length === 1) {
+    const p = hull[0];
+    return `M ${p.x - padding} ${p.y} a ${padding} ${padding} 0 1 0 ${padding * 2} 0 a ${padding} ${padding} 0 1 0 ${-padding * 2} 0`;
+  }
+  if (hull.length === 2) {
+    const cx = (hull[0].x + hull[1].x) / 2;
+    const cy = (hull[0].y + hull[1].y) / 2;
+    const r = Math.sqrt((hull[1].x - hull[0].x) ** 2 + (hull[1].y - hull[0].y) ** 2) / 2 + padding;
+    return `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`;
+  }
+
+  // 각 점에서 바깥 방향 계산 후 padding 이동
+  const n = hull.length;
+  const expanded = hull.map((pt, i) => {
+    const prev = hull[(i - 1 + n) % n];
+    const next = hull[(i + 1) % n];
+    const dx1 = pt.x - prev.x, dy1 = pt.y - prev.y;
+    const dx2 = next.x - pt.x, dy2 = next.y - pt.y;
+    const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1) || 1;
+    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+    // 두 엣지의 평균 법선 방향 (바깥쪽)
+    const nx = (dy1 / len1 + dy2 / len2) / 2;
+    const ny = (-dx1 / len1 - dx2 / len2) / 2;
+    const nlen = Math.sqrt(nx * nx + ny * ny) || 1;
+    return { x: pt.x - (nx / nlen) * padding, y: pt.y - (ny / nlen) * padding };
+  });
+
+  // 부드러운 곡선 (catmull-rom 근사)
+  const parts = [];
+  for (let i = 0; i < expanded.length; i++) {
+    const p0 = expanded[(i - 1 + expanded.length) % expanded.length];
+    const p1 = expanded[i];
+    const p2 = expanded[(i + 1) % expanded.length];
+    const cp1x = p1.x + (p2.x - p0.x) * 0.15;
+    const cp1y = p1.y + (p2.y - p0.y) * 0.15;
+    const cp2x = p2.x - (expanded[(i + 2) % expanded.length].x - p1.x) * 0.15;
+    const cp2y = p2.y - (expanded[(i + 2) % expanded.length].y - p1.y) * 0.15;
+    if (i === 0) parts.push(`M ${p1.x} ${p1.y}`);
+    parts.push(`C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`);
+  }
+  parts.push('Z');
+  return parts.join(' ');
+}
+
+function renderClusterHulls(svg, nodes, clusterGroups) {
+  Object.entries(clusterGroups).forEach(([cid, ids]) => {
+    const pts = ids.map(id => nodes[id]).filter(Boolean);
+    if (pts.length === 0) return;
+
+    const hull = computeConvexHull(pts);
+    const pad = 28;
+    const pathD = hullToRoundedPath(hull, pad);
+    const hue = getClusterHue(cid);
+
+    const area = createSvgEl('path', {
+      d: pathD,
+      class: 'cluster-hull',
+      fill: `hsl(${hue} 65% 68%)`,
+      stroke: `hsl(${hue} 60% 48%)`,
+      'fill-opacity': '0.13',
+      'stroke-opacity': '0.45',
+      'stroke-width': '1.5',
+      'stroke-dasharray': '4 3'
+    });
+    svg.appendChild(area);
+
+    // 클러스터 이름 레이블 — hull 중심 위쪽
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    const minY = Math.min(...pts.map(p => p.y));
+    const labelY = minY - pad - 6;
+
+    const label = createSvgEl('text', {
+      x: cx,
+      y: labelY,
+      class: 'cluster-hull-label',
+      fill: `hsl(${hue} 55% 38%)`
+    });
+    label.textContent = trimText(cid, 18);
+    svg.appendChild(label);
+  });
+}
+
 function renderStorageGraph() {
   const panel = document.getElementById('storageGraph');
   if (!panel) return;
@@ -1184,13 +1326,21 @@ function renderStorageGraph() {
   const selectedId = storageState.selectedNoteId;
   const edgeTotal = storageState.links.length + storageState.evolutions.length;
   const showAllEdgeLabels = edgeTotal <= 18;
+
+  // 클러스터 그룹 구성
+  const clusterGroups = {};
   const clusterCounts = {};
   storageState.notes.forEach((n) => {
     const cid = normalizeClusterId(n.cluster_id);
     if (!cid) return;
+    if (!clusterGroups[cid]) clusterGroups[cid] = [];
+    clusterGroups[cid].push(n.id);
     clusterCounts[cid] = (clusterCounts[cid] || 0) + 1;
   });
   const clusterEntries = Object.entries(clusterCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
+  // 클러스터 hull — 엣지보다 먼저, 노드보다 뒤에 그린다
+  renderClusterHulls(svg, nodes, clusterGroups);
 
   const connectedToSelected = new Set();
   if (selectedId) {

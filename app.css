@@ -1393,3 +1393,27 @@ textarea {
 .input-validation-hint.ok {
     color: var(--success-text);
 }
+
+/* ── 클러스터 hull ── */
+
+.cluster-hull {
+    pointer-events: none;
+}
+
+.cluster-hull-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-anchor: middle;
+    pointer-events: none;
+    paint-order: stroke;
+    stroke: color-mix(in srgb, var(--surface) 90%, transparent 10%);
+    stroke-width: 2.5px;
+    stroke-linejoin: round;
+}
+
+@media (prefers-color-scheme: dark) {
+    .cluster-hull {
+        fill-opacity: 0.18;
+        stroke-opacity: 0.5;
+    }
+}
