@@ -288,6 +288,16 @@ async function runOptionalAiRefine(content) {
   return { text: fallbackRefineText(content), mode: 'fallback' };
 }
 
+function getPointOnRect(p1, p2, w, h) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  if (dx === 0 && dy === 0) return { ...p2 };
+  const tX = Math.abs((w / 2) / dx);
+  const tY = Math.abs((h / 2) / dy);
+  const t = Math.min(tX, tY);
+  return { x: p2.x - t * dx, y: p2.y - t * dy };
+}
+
 function createSvgEl(tag, attrs = {}) {
   const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
   Object.keys(attrs).forEach((k) => el.setAttribute(k, attrs[k]));
@@ -1131,7 +1141,7 @@ function runForceLayout(nodes, width, height, iterations = 80) {
   const k = Math.sqrt((width * height) / Math.max(noteIds.length, 1));
   const repulsion = k * 1.3;
   const targetDistance = Math.max(72, Math.min(150, k * 1.2));
-  const collisionDistance = Math.max(30, Math.min(56, k * 0.65));
+  const collisionDistance = Math.max(120, Math.min(200, k * 1.4));
   const clusterTargetDist = Math.max(50, Math.min(90, k * 0.8));
 
   for (let iter = 0; iter < iterations; iter++) {
@@ -1355,6 +1365,15 @@ function renderStorageGraph() {
   });
   const clusterEntries = Object.entries(clusterCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
+  // 노드 크기 사전 계산 (교점 계산용)
+  const nodeDims = {};
+  storageState.notes.forEach(note => {
+    const labelText = note.content || '';
+    const boxW = 180;
+    const boxH = Math.max(60, Math.min(160, (labelText.length / 20) * 16 + 40));
+    nodeDims[note.id] = { w: boxW, h: boxH };
+  });
+
   // 클러스터 hull — 엣지보다 먼저, 노드보다 뒤에 그린다
   renderClusterHulls(svg, nodes, clusterGroups);
 
@@ -1414,12 +1433,16 @@ function renderStorageGraph() {
   storageState.links.forEach((link) => {
     const from = nodes[link.source_id], to = nodes[link.target_id];
     if (!from || !to) return;
+    const dFrom = nodeDims[link.source_id], dTo = nodeDims[link.target_id];
+    const p1 = getPointOnRect(to, from, dFrom.w, dFrom.h);
+    const p2 = getPointOnRect(from, to, dTo.w, dTo.h);
+
     const highlighted = !selectedId || link.source_id === selectedId || link.target_id === selectedId;
     const line = createSvgEl('line', {
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
+      x1: p1.x,
+      y1: p1.y,
+      x2: p2.x,
+      y2: p2.y,
       class: 'storage-edge' + (highlighted ? '' : ' muted'),
       'marker-end': 'url(#arrow-link)'
     });
@@ -1437,12 +1460,16 @@ function renderStorageGraph() {
   storageState.evolutions.forEach((evo) => {
     const from = nodes[evo.source_id], to = nodes[evo.target_id];
     if (!from || !to) return;
+    const dFrom = nodeDims[evo.source_id], dTo = nodeDims[evo.target_id];
+    const p1 = getPointOnRect(to, from, dFrom.w, dFrom.h);
+    const p2 = getPointOnRect(from, to, dTo.w, dTo.h);
+
     const highlighted = !selectedId || evo.source_id === selectedId || evo.target_id === selectedId;
     const line = createSvgEl('line', {
-      x1: from.x,
-      y1: from.y,
-      x2: to.x,
-      y2: to.y,
+      x1: p1.x,
+      y1: p1.y,
+      x2: p2.x,
+      y2: p2.y,
       class: 'storage-edge evo-edge' + (highlighted ? '' : ' muted'),
       'marker-end': 'url(#arrow-evo)',
       'stroke-dasharray': '5 3'
@@ -1458,45 +1485,47 @@ function renderStorageGraph() {
   });
 
   // 노드
-  const denseGraph = storageState.notes.length > 26;
-  const nodeLabelMax = storageState.notes.length > 30 ? 10 : (storageState.notes.length > 16 ? 12 : 14);
   storageState.notes.forEach((note) => {
     const pos = nodes[note.id];
     const selected = note.id === storageState.selectedNoteId;
     const isNeighbor = selectedId ? connectedToSelected.has(note.id) : false;
     const dimmed = !!selectedId && !selected && !isNeighbor;
-    const degree = degreeByNode[note.id] || 0;
-    const r = Math.min(20, (selected ? 16 : 12) + Math.min(6, degree * 0.6));
+    
+    const labelText = note.content || '';
+    const { w: boxW, h: boxH } = nodeDims[note.id];
+    
     const clusterId = normalizeClusterId(note.cluster_id);
     const clusterHue = clusterId ? getClusterHue(clusterId) : null;
-    const fillColor = clusterHue === null ? null : `hsl(${clusterHue} 70% ${selected ? 48 : 66}%)`;
-    const strokeColor = clusterHue === null ? null : `hsl(${clusterHue} 72% ${selected ? 34 : 42}%)`;
-    const circle = createSvgEl('circle', {
-      cx: pos.x,
-      cy: pos.y,
-      r,
+    const fillColor = clusterHue === null ? null : `hsl(${clusterHue} 55% ${selected ? 55 : 72}%)`;
+    const strokeColor = clusterHue === null ? null : `hsl(${clusterHue} 45% ${selected ? 45 : 55}%)`;
+    
+    const rect = createSvgEl('rect', {
+      x: pos.x - boxW / 2,
+      y: pos.y - boxH / 2,
+      width: boxW,
+      height: boxH,
+      rx: 8, ry: 8,
       class: 'storage-node' + (selected ? ' selected' : '') + (dimmed ? ' dimmed' : '')
     });
-    if (fillColor) circle.setAttribute('fill', fillColor);
-    if (strokeColor) circle.setAttribute('stroke', strokeColor);
-    circle.addEventListener('click', () => {
+    if (fillColor) rect.setAttribute('fill', fillColor);
+    if (strokeColor) rect.setAttribute('stroke', strokeColor);
+    rect.addEventListener('click', () => {
       storageState.selectedNoteId = note.id;
       renderStorageList();
       renderStorageGraph();
       renderStorageDetail();
     });
-    svg.appendChild(circle);
+    svg.appendChild(rect);
 
-    const showNodeLabel = !denseGraph || selected || isNeighbor;
-    if (showNodeLabel) {
-      const text = createSvgEl('text', {
-        x: pos.x,
-        y: pos.y + r + 13,
-        class: 'storage-node-label' + (dimmed ? ' muted' : '')
-      });
-      text.textContent = trimText(firstLineText(note.content), nodeLabelMax);
-      svg.appendChild(text);
-    }
+    const fo = createSvgEl('foreignObject', {
+      x: pos.x - boxW / 2 + 10,
+      y: pos.y - boxH / 2 + 10,
+      width: boxW - 20,
+      height: boxH - 20,
+      style: 'pointer-events: none;'
+    });
+    fo.innerHTML = `<div xmlns="http://www.w3.org/1999/xhtml" style="font-size:11px; line-height:1.3; color:var(--text); word-break:break-all; white-space:pre-wrap; overflow:hidden; height:100%; opacity:${dimmed ? 0.4 : 1}">${escapeHtml(labelText)}</div>`;
+    svg.appendChild(fo);
   });
 
   if (clusterEntries.length > 0) {

@@ -1072,7 +1072,7 @@ textarea {
 }
 
 .storage-node {
-    fill: color-mix(in srgb, var(--accent) 42%, white 58%);
+    fill: color-mix(in srgb, var(--accent) 92%, white 8%);
     stroke: var(--accent);
 }
 
