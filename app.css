@@ -1317,3 +1317,79 @@ textarea {
   .evo-type.shrinks  { background: #633806; }
   .evo-type.decay    { background: #4a2222; }
 }
+
+/* ── 태그 수동 편집 ── */
+
+.tag-editor-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+    min-height: 28px;
+}
+
+.tag-removable {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 4px;
+}
+
+.tag-remove-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--text-muted);
+    padding: 0 1px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tag-remove-btn:hover {
+    color: var(--error-text);
+    background: var(--error-bg);
+}
+
+.tag-add-form {
+    margin-top: 4px;
+}
+
+/* ── 검색 힌트 ── */
+
+.search-hint {
+    color: var(--text-muted);
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.search-hint code {
+    font-family: var(--font-mono, monospace);
+    background: color-mix(in srgb, var(--border) 40%, transparent 60%);
+    border-radius: 3px;
+    padding: 0 3px;
+    font-size: 10px;
+}
+
+/* ── attachment 입력 유효성 ── */
+
+.attachment-add-form {
+    flex-wrap: wrap;
+}
+
+.input-validation-hint {
+    font-size: 11px;
+    margin: 2px 0 6px;
+    min-height: 16px;
+    color: transparent;
+}
+
+.input-validation-hint.error {
+    color: var(--error-text);
+}
+
+.input-validation-hint.ok {
+    color: var(--success-text);
+}

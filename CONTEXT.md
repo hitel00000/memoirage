@@ -110,9 +110,9 @@ P4 (assistive intelligence):
 ## Action checklist
 
 Now:
-- [ ] Add tag edit/removal controls in note detail (not only auto-extraction)
-- [ ] Add small onboarding hint for query syntax (`#tag`, `status:`) in list UIs
-- [ ] Add basic validation/limits UI for attachment URL + label input
+- [x] Add tag edit/removal controls in note detail (not only auto-extraction)
+- [x] Add small onboarding hint for query syntax (`#tag`, `status:`) in list UIs
+- [x] Add basic validation/limits UI for attachment URL + label input
 
 Next:
 - [ ] Add `attachments_count` / `cluster_id`-aware helper retrieval patterns in `db.js`

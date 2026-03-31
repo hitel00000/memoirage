@@ -524,7 +524,9 @@ function renderProcessingList() {
   panel.innerHTML = `
     <div class="list-search-wrap">
       <input id="processingSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:inbox" value="${escapeHtml(processingState.query)}" />
-      <div class="list-search-meta">${filtered.length}/${processingState.notes.length} notes</div>
+      <div class="list-search-meta">${filtered.length}/${processingState.notes.length} notes
+        <span class="search-hint">· <code>#tag</code> or <code>status:processing</code></span>
+      </div>
     </div>
     <div id="processingListBody"></div>`;
 
@@ -619,6 +621,13 @@ function renderProcessingDetail() {
       <button class="processing-btn primary" id="saveProcessingNoteBtn">Save Edits</button>
       <button class="processing-btn" id="aiRefineBtn">AI Refine (Optional)</button>
     </div>
+
+    <h3 class="storage-section-title">Tags</h3>
+    <div id="processingTagsWrap" class="tag-editor-wrap"></div>
+    <div class="storage-link-form tag-add-form">
+      <input id="pTagInput" class="storage-input" placeholder="tag name (without #)" maxlength="40">
+      <button id="pAddTagBtn" class="storage-btn primary">Add Tag</button>
+    </div>
     <div class="processing-btn-row">
       <button class="processing-btn primary" id="toggleProcessingBtn">${escapeHtml(toggleLabel)}</button>
       <button class="processing-btn primary" id="moveDoneBtn">Move to Done</button>
@@ -626,11 +635,12 @@ function renderProcessingDetail() {
 
     <h3 class="storage-section-title">Attachments <span style="font-size:11px;font-weight:400;opacity:.7">(${attachments.length})</span></h3>
     <div id="processingAttachments"></div>
-    <div class="storage-link-form">
-      <input id="pAttachmentUrl" class="storage-input" placeholder="https://example.com/article">
-      <input id="pAttachmentLabel" class="storage-input" placeholder="Label (optional)">
+    <div class="storage-link-form attachment-add-form">
+      <input id="pAttachmentUrl" class="storage-input" placeholder="https://example.com/article" maxlength="2048">
+      <input id="pAttachmentLabel" class="storage-input" placeholder="Label (optional)" maxlength="80">
       <button id="pAddAttachmentBtn" class="storage-btn primary">Add Link</button>
     </div>
+    <div id="pAttachmentValidation" class="input-validation-hint"></div>
 
     <h3 class="storage-section-title">Add Link <span style="font-size:11px;font-weight:400;opacity:.7">(개념 간 관계)</span></h3>
     <div class="storage-link-form">
@@ -655,6 +665,14 @@ function renderProcessingDetail() {
   renderProcessingLinks(relatedLinks, selected.id);
   renderProcessingEvolutions(relatedEvos, selected.id);
   renderProcessingAttachments(selected.id);
+  renderProcessingTags(selected.id);
+
+  document.getElementById('pAddTagBtn').addEventListener('click', async () => {
+    await addProcessingTag(selected.id);
+  });
+  document.getElementById('pTagInput').addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); await addProcessingTag(selected.id); }
+  });
 
   document.getElementById('saveProcessingNoteBtn').addEventListener('click', async () => {
     const content = document.getElementById('processingContent').value.trim();
@@ -723,6 +741,26 @@ function renderProcessingDetail() {
   document.getElementById('pAddAttachmentBtn').addEventListener('click', async () => {
     await addProcessingAttachment(selected.id);
   });
+
+  const urlInput = document.getElementById('pAttachmentUrl');
+  if (urlInput) {
+    urlInput.addEventListener('input', () => {
+      const hint = document.getElementById('pAttachmentValidation');
+      if (!hint) return;
+      const val = urlInput.value.trim();
+      if (!val) { hint.textContent = ''; hint.className = 'input-validation-hint'; return; }
+      if (!isValidHttpUrl(val)) {
+        hint.textContent = 'Must be a valid http(s) URL.';
+        hint.className = 'input-validation-hint error';
+      } else if (val.length > 2048) {
+        hint.textContent = 'URL too long (max 2048 chars).';
+        hint.className = 'input-validation-hint error';
+      } else {
+        hint.textContent = '✓ Valid URL';
+        hint.className = 'input-validation-hint ok';
+      }
+    });
+  }
 }
 
 function renderProcessingLinks(links, noteId) {
@@ -814,22 +852,76 @@ async function addProcessingAttachment(noteId) {
     showStatus('processingStatus', 'Please enter a valid http(s) URL.', 'error');
     return;
   }
+  if (url.length > 2048) {
+    showStatus('processingStatus', 'URL too long (max 2048 chars).', 'error');
+    return;
+  }
+  if (label.length > 80) {
+    showStatus('processingStatus', 'Label too long (max 80 chars).', 'error');
+    return;
+  }
   const note = processingState.notes.find((n) => n.id === noteId);
   if (!note) return;
   const attachments = getNoteAttachments(note);
+  if (attachments.length >= 20) {
+    showStatus('processingStatus', 'Max 20 attachments per note.', 'error');
+    return;
+  }
   if (attachments.some((a) => a.url === url)) {
     showStatus('processingStatus', 'Same attachment already exists.', 'error');
     return;
   }
-  attachments.push({
-    id: generateId(),
-    url,
-    label,
-    created_at: new Date().toISOString()
-  });
+  attachments.push({ id: generateId(), url, label, created_at: new Date().toISOString() });
   await updateNote(noteId, { attachments });
+  urlInput.value = '';
+  labelInput.value = '';
+  const hint = document.getElementById('pAttachmentValidation');
+  if (hint) { hint.textContent = ''; hint.className = 'input-validation-hint'; }
   await reloadProcessingAndSelect(noteId);
   showStatus('processingStatus', 'Attachment added.', 'success');
+}
+
+function renderProcessingTags(noteId) {
+  const container = document.getElementById('processingTagsWrap');
+  if (!container) return;
+  const note = processingState.notes.find((n) => n.id === noteId);
+  const tags = getNoteTags(note);
+  if (tags.length === 0) {
+    container.innerHTML = '<div class="storage-empty" style="padding:4px 0 8px">No tags yet. Type in content with #hashtag or add manually.</div>';
+    return;
+  }
+  container.innerHTML = tags.map((tag) => `
+    <span class="note-tag-chip tag-removable">
+      #${escapeHtml(tag)}
+      <button class="tag-remove-btn" data-tag="${escapeHtml(tag)}" title="Remove tag">×</button>
+    </span>`).join('');
+  container.querySelectorAll('.tag-remove-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const tagToRemove = normalizeTag(btn.dataset.tag);
+      const current = processingState.notes.find((n) => n.id === noteId);
+      if (!current) return;
+      const nextTags = getNoteTags(current).filter((t) => t !== tagToRemove);
+      await updateNote(noteId, { tags: nextTags });
+      await reloadProcessingAndSelect(noteId);
+    });
+  });
+}
+
+async function addProcessingTag(noteId) {
+  const input = document.getElementById('pTagInput');
+  if (!input) return;
+  const raw = input.value.trim();
+  const tag = normalizeTag(raw);
+  if (!tag) { showStatus('processingStatus', 'Tag cannot be empty.', 'error'); return; }
+  if (tag.length > 40) { showStatus('processingStatus', 'Tag too long (max 40 chars).', 'error'); return; }
+  const note = processingState.notes.find((n) => n.id === noteId);
+  if (!note) return;
+  const existing = getNoteTags(note);
+  if (existing.includes(tag)) { showStatus('processingStatus', 'Tag already exists.', 'error'); return; }
+  await updateNote(noteId, { tags: [...existing, tag] });
+  input.value = '';
+  await reloadProcessingAndSelect(noteId);
+  showStatus('processingStatus', `Tag #${tag} added.`, 'success');
 }
 
 function findNoteByQuery(noteId, query, noteList) {
@@ -913,7 +1005,9 @@ function renderStorage() {
         </h2>
         <div class="list-search-wrap storage-search-wrap">
           <input id="storageSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:done" value="${escapeHtml(storageState.query)}" />
-          <div id="storageSearchMeta" class="list-search-meta"></div>
+          <div id="storageSearchMeta" class="list-search-meta">
+            <span class="search-hint"><code>#tag</code> or <code>status:done</code></span>
+          </div>
         </div>
         <div id="storageList"></div>
       </aside>
@@ -950,7 +1044,7 @@ function renderStorageList() {
   if (!panel) return;
   const filtered = filterNotesByQuery(storageState.notes, storageState.query, new Set(['done']));
   const meta = document.getElementById('storageSearchMeta');
-  if (meta) meta.textContent = `${filtered.length}/${storageState.notes.length} notes`;
+  if (meta) meta.innerHTML = `${filtered.length}/${storageState.notes.length} notes <span class="search-hint">· <code>#tag</code> or <code>status:done</code></span>`;
   if (storageState.selectedNoteId && !filtered.find((n) => n.id === storageState.selectedNoteId)) {
     storageState.selectedNoteId = null;
   }
