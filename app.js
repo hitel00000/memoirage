@@ -483,10 +483,13 @@ async function loadProcessingNotes() {
 async function reloadProcessingAndSelect(noteId = null) {
   await loadProcessingNotes();
   if (noteId) {
+    // 지정된 noteId가 목록에 있으면 유지, 없으면(삭제된 경우) null
     processingState.selectedNoteId = processingState.notes.find((n) => n.id === noteId) ? noteId : null;
   } else if (processingState.selectedNoteId && !processingState.notes.find((n) => n.id === processingState.selectedNoteId)) {
+    // 선택된 노트가 목록에서 사라진 경우(삭제/상태변경) null로
     processingState.selectedNoteId = null;
   }
+  // 선택 보존: 검색 필터 밖으로 나가더라도 selectedNoteId는 건드리지 않음
   renderProcessingList();
   renderProcessingDetail();
 }
@@ -515,19 +518,8 @@ function renderProcessing() {
 function renderProcessingList() {
   const panel = document.getElementById('processingList');
   if (!panel) return;
-  if (processingState.notes.length === 0) {
-    panel.innerHTML = '<div class="list-search-wrap"><input id="processingSearchInput" class="list-search-input" placeholder="Search: keyword #tag status:inbox" /></div><div style="padding:20px;color:#999;">No notes</div>';
-    const emptyInput = document.getElementById('processingSearchInput');
-    if (emptyInput) {
-      emptyInput.value = processingState.query || '';
-      emptyInput.addEventListener('input', (e) => { processingState.query = e.target.value; });
-    }
-    return;
-  }
+
   const filtered = filterNotesByQuery(processingState.notes, processingState.query, new Set(['inbox', 'processing']));
-  if (processingState.selectedNoteId && !filtered.find((n) => n.id === processingState.selectedNoteId)) {
-    processingState.selectedNoteId = filtered[0] ? filtered[0].id : null;
-  }
 
   panel.innerHTML = `
     <div class="list-search-wrap">
@@ -536,16 +528,32 @@ function renderProcessingList() {
     </div>
     <div id="processingListBody"></div>`;
 
+  const searchInput = document.getElementById('processingSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      processingState.query = e.target.value;
+      renderProcessingList();
+      renderProcessingDetail();
+    });
+  }
+
   const body = document.getElementById('processingListBody');
   if (!body) return;
+
+  if (processingState.notes.length === 0) {
+    body.innerHTML = '<div style="padding:20px;color:#999;">No notes</div>';
+    return;
+  }
   if (filtered.length === 0) {
     body.innerHTML = '<div style="padding:20px;color:#999;">No matching notes</div>';
-  } else {
-    body.innerHTML = filtered.map((note) => {
-      const sel = note.id === processingState.selectedNoteId ? ' selected' : '';
-      const tagsHtml = renderTagChips(note, 3);
-      const clusterChip = renderClusterChip(note);
-      return `
+    return;
+  }
+
+  body.innerHTML = filtered.map((note) => {
+    const sel = note.id === processingState.selectedNoteId ? ' selected' : '';
+    const tagsHtml = renderTagChips(note, 3);
+    const clusterChip = renderClusterChip(note);
+    return `
       <div class="processing-item${sel}">
         <div class="processing-item-content" data-action="select" data-id="${note.id}">
           <div class="processing-item-text">${escapeHtml(note.content || '(No content)')}</div>
@@ -557,17 +565,7 @@ function renderProcessingList() {
         </div>
         <button class="processing-delete-mini" data-action="delete" data-id="${note.id}">×</button>
       </div>`;
-    }).join('');
-  }
-
-  const searchInput = document.getElementById('processingSearchInput');
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      processingState.query = e.target.value;
-      renderProcessingList();
-      renderProcessingDetail();
-    });
-  }
+  }).join('');
 
   panel.querySelectorAll('[data-action="select"]').forEach((el) => {
     el.addEventListener('click', () => {
@@ -1479,7 +1477,7 @@ async function renderRoute() {
     return;
   }
   if (route === 'capture') { renderCapture(); return; }
-  if (route === 'processing') { await loadProcessingNotes(); renderProcessing(); return; }
+  if (route === 'processing') { processingState.query = ''; await loadProcessingNotes(); renderProcessing(); return; }
   if (route === 'storage') { await loadStorageData(); renderStorage(); return; }
   document.getElementById('app-root').innerHTML = '<section class="placeholder"><h2>Not Found</h2></section>';
 }
