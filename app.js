@@ -121,6 +121,9 @@ function bindRouteLinks(scope) {
 // ── 공통 유틸 ──
 
 function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
@@ -159,10 +162,8 @@ function extractTagsFromText(text) {
 }
 
 function getNoteTags(note) {
-  const list = [];
-  if (Array.isArray(note && note.tags)) list.push(...note.tags);
-  if (note && note.content) list.push(...extractTagsFromText(note.content));
-  const set = new Set(list.map(normalizeTag).filter(Boolean));
+  if (!note) return [];
+  const set = new Set((Array.isArray(note.tags) ? note.tags : []).map(normalizeTag).filter(Boolean));
   return [...set];
 }
 
@@ -450,7 +451,7 @@ function renderCapture() {
         type: 'text',
         content,
         status: 'inbox',
-        tags: extractTagsFromText(content),
+        tags: extractTagsFromText(content), // 초기 캡처 시에만 자동 추출
         created_at: new Date().toISOString(),
         deleted_at: null
       });
@@ -678,7 +679,12 @@ function renderProcessingDetail() {
     const content = document.getElementById('processingContent').value.trim();
     if (!content) { showStatus('processingStatus', 'Content cannot be empty.', 'error'); return; }
     try {
-      await updateNote(selected.id, { content, tags: extractTagsFromText(content) });
+      const existingTags = getNoteTags(selected);
+      const newExtracted = extractTagsFromText(content);
+      // 기존 태그 유지 + 본문에서 새로 발견된 태그만 합침
+      const mergedTags = [...new Set([...existingTags, ...newExtracted])];
+      
+      await updateNote(selected.id, { content, tags: mergedTags });
       await reloadProcessingAndSelect(selected.id);
       showStatus('processingStatus', 'Saved.', 'success');
     } catch (e) { showStatus('processingStatus', 'Save failed: ' + e.message, 'error'); }
@@ -966,6 +972,12 @@ async function deleteProcessingNote(noteId) {
   if (!confirm('Delete this note?')) return;
   try {
     await deleteNote(noteId);
+    // 관련 링크 및 에볼루션 정리 (Storage와 일관성 유지)
+    const relatedLinks = processingState.links.filter(l => l.source_id === noteId || l.target_id === noteId);
+    const relatedEvos = processingState.evolutions.filter(e => e.source_id === noteId || e.target_id === noteId);
+    for (const l of relatedLinks) await deleteLink(l.id);
+    for (const e of relatedEvos) await deleteEvolution(e.id);
+    
     processingState.selectedNoteId = null;
     await reloadProcessingAndSelect();
   } catch (e) { showStatus('processingStatus', 'Delete failed.', 'error'); }
@@ -989,7 +1001,6 @@ async function loadStorageData() {
   if (storageState.selectedNoteId && !doneIds.has(storageState.selectedNoteId)) {
     storageState.selectedNoteId = null;
   }
-  storageState.graphNodes = null;
 }
 
 function renderStorage() {
@@ -1080,17 +1091,22 @@ function renderStorageList() {
 // ── force-directed 그래프 ──
 
 function initGraphPositions(width, height) {
-  if (storageState.graphNodes) return storageState.graphNodes;
+  const existing = storageState.graphNodes || {};
   const nodes = {};
   const cx = width / 2, cy = height / 2;
   const r = Math.min(width, height) * 0.35;
+  
   storageState.notes.forEach((note, i) => {
-    const angle = (Math.PI * 2 * i) / storageState.notes.length;
-    nodes[note.id] = {
-      x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 20,
-      y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 20,
-      vx: 0, vy: 0
-    };
+    if (existing[note.id]) {
+      nodes[note.id] = existing[note.id];
+    } else {
+      const angle = (Math.PI * 2 * i) / (storageState.notes.length || 1);
+      nodes[note.id] = {
+        x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 20,
+        y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 20,
+        vx: 0, vy: 0
+      };
+    }
   });
   storageState.graphNodes = nodes;
   return nodes;

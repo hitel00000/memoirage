@@ -85,8 +85,8 @@ function _buildNoteMatcher(filters = {}) {
     }
 
     const created = note.created_at ? Date.parse(note.created_at) : null;
-    if (from !== null && Number.isFinite(from) && created !== null && Number.isFinite(created) && created < from) return false;
-    if (to !== null && Number.isFinite(to) && created !== null && Number.isFinite(created) && created > to) return false;
+    if (Number.isFinite(from) && (!Number.isFinite(created) || created < from)) return false;
+    if (Number.isFinite(to) && (!Number.isFinite(created) || created > to)) return false;
 
     return true;
   };
